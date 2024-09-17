@@ -1,3 +1,4 @@
+
 use super::FilmInfo;
 
 use scraper::{Html, Selector};
@@ -7,7 +8,7 @@ use tokio::task::JoinSet;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
-pub struct ZBKYYY {
+pub struct IJUJITV {
     url: String,
     name: String,
     release_time: String,
@@ -20,7 +21,7 @@ pub struct ZBKYYY {
     sources: Vec<Vec<String>>,
 }
 
-impl Default for ZBKYYY {
+impl Default for IJUJITV {
     fn default() -> Self {
         Self {
             url: String::new(),
@@ -37,7 +38,7 @@ impl Default for ZBKYYY {
     }
 }
 
-impl FilmInfo for ZBKYYY {
+impl FilmInfo for IJUJITV {
     fn name(&self) -> &str {
         &self.name
     }
@@ -67,7 +68,7 @@ impl FilmInfo for ZBKYYY {
     }
 }
 
-impl ZBKYYY {
+impl IJUJITV {
     pub fn new(url: &str) -> Self {
         Self {
             url: url.to_string(),
@@ -76,21 +77,23 @@ impl ZBKYYY {
     }
 
     pub fn from_id(id: u64) -> Self {
-        Self::new(&format!("https://www.zbkyyy.com/qyvoddetail/{}.html", id))
+        Self::new(&format!("https://v.ijujitv.cc/detail/{}.html", id))
     }
 
     pub async fn parse(&mut self) -> Result<(), reqwest::Error> {
         let body = reqwest::get(&self.url).await?.text().await?;
         let html = Html::parse_document(&body);
+
         let info_dict = self.parse_info(&html);
-        self.name = info_dict.get("影片名称").unwrap().to_string();
-        self.release_time = info_dict.get("上映时间").unwrap().to_string();
-        self.genre = info_dict.get("影片类型").unwrap().to_string();
-        self.language = info_dict.get("影片语言").unwrap().to_string();
-        self.director = info_dict.get("影片导演").unwrap().to_string();
-        self.starring = info_dict.get("影片主演").unwrap().to_string();
-        self.region = info_dict.get("国家/地区").unwrap().to_string();
+        self.name = info_dict.get("name").unwrap().to_string();
+        self.release_time = info_dict.get("年代").unwrap().to_string();
+        self.genre = "-".to_string();
+        self.language = info_dict.get("语言").unwrap().to_string();
+        self.director = info_dict.get("导演").unwrap().to_string();
+        self.starring = info_dict.get("主演").unwrap().to_string();
+        self.region = "_".to_string();
         self.introduction = info_dict.get("简介").unwrap().to_string(); 
+
         let mut sources = self.parse_sources(&html);
         let mut tasks = JoinSet::new();
         for (i, source) in sources.iter().enumerate() {
@@ -118,16 +121,19 @@ impl ZBKYYY {
     }
 
     fn parse_info(&self, html: &Html) -> HashMap<String, String> {
-        let info_selector = Selector::parse("div.tv-bd p:has(b)").unwrap();
-        let infos = html.select(&info_selector);
-        let mut info_dict: HashMap<String, String> = HashMap::new();
-        for info in infos {
-            let texts = info.text().collect::<Vec<_>>();
-            if texts.len() < 2 { continue; }
-            let key = texts[0].trim().split("：").collect::<Vec<_>>()[0].to_string();
-            let value = texts[1].trim().to_string();
-            info_dict.insert(key, value);
-        }
+        let info_selector = Selector::parse("div.albumDetailMain-right").unwrap();
+        let attr_selector = Selector::parse("p:has(label)").unwrap();
+
+        let info_div = html.select(&info_selector).next().unwrap();
+
+        let mut info_dict: HashMap<String, String> = info_div.select(&attr_selector)
+            .map(|node| node.text().collect::<String>())
+            .map(|text| text.trim().split('：').map(|s| Some(s.trim().to_string())).collect::<Vec<_>>())
+            .map(|mut attr| (attr[0].take().unwrap(), attr[1].take().unwrap()))
+            .collect();
+
+        let name_selector = Selector::parse("h1.title").unwrap();
+        info_dict.insert("name".to_string(), info_div.select(&name_selector).next().unwrap().text().collect::<String>());
         info_dict
     }
 
@@ -135,7 +141,7 @@ impl ZBKYYY {
         let client = reqwest::Client::new();
         let response = client.get(url).timeout(std::time::Duration::from_secs(5)).send().await?;
         let html = Html::parse_document(&response.text().await?);
-        let m3u8_selector = Selector::parse("div.iplays script").unwrap();
+        let m3u8_selector = Selector::parse("div.playBox script").unwrap();
         let m3u8_json = html.select(&m3u8_selector).next().unwrap().text()
             .collect::<Vec<_>>()[0].split("=")
             .collect::<Vec<_>>()[1].trim().to_string();
@@ -146,7 +152,7 @@ impl ZBKYYY {
     fn parse_sources(&self, html: &Html) ->Vec<Vec<String>> {
         let mut base_url = Url::parse(&self.url).unwrap();
         let mut sources: Vec<Vec<String>> = Vec::new();
-        let srcs_selector = Selector::parse("div.v_con_box ul").unwrap();
+        let srcs_selector = Selector::parse("div.tab-content.stui-pannel_bd.col-pd.clearfix ul").unwrap();
         let uri_selector = Selector::parse("li a").unwrap();
         let srcs = html.select(&srcs_selector);
         for src in srcs {
@@ -154,6 +160,9 @@ impl ZBKYYY {
             let urls = src.select(&uri_selector);
             for url in urls {
                 let href = url.value().attr("href").unwrap();
+                if href.starts_with("//") {
+                    continue;
+                }
                 base_url.set_path(&href);
                 source.push(base_url.as_str().to_string()); 
             }
@@ -164,10 +173,12 @@ impl ZBKYYY {
     }
 }
 
+
 #[tokio::test()]
-async fn test_zbkyyy() -> Result<(), reqwest::Error> {
-    let mut zbkyyy = ZBKYYY::from_id(8391);
-    zbkyyy.parse().await?;
-    println!("{:?}", zbkyyy);
+async fn test_ijujitv() -> Result<(), reqwest::Error> {
+    // let mut ijujitv = IJUJITV::from_id(54460);
+    let mut ijujitv = IJUJITV::from_id(5139);
+    ijujitv.parse().await?;
+    println!("{:?}", ijujitv);
     Ok(())
 }

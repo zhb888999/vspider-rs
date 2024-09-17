@@ -1,6 +1,6 @@
 mod m3u8;
 mod source;
-use source::{FilmInfo, ZBKYYY};
+use source::{FilmInfo, ZBKYYY, IJUJITV};
 use m3u8::{DownloadError, M3U8DownloadBuilder};
 
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
@@ -48,9 +48,8 @@ async fn download(film: &impl FilmInfo) -> Result<(), DownloadError> {
 #[tokio::main]
 async fn main() -> Result<(), DownloadError> {
     env_logger::init();
-    let url = "https://www.zbkyyy.com/qyvoddetail/8391.html";
-    let mut zbkyyy = ZBKYYY::new(url);
-    zbkyyy.parse().await?;
-    download(&zbkyyy).await?;
+    let mut film = IJUJITV::from_id(5139);
+    film.parse().await?;
+    download(&film).await?;
     Ok(())
 }
