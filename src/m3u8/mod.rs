@@ -201,7 +201,9 @@ impl M3U8Download {
         let mut tasks = JoinSet::new();
 
         for (index, segment) in self.segments.iter_mut().enumerate() {
-            if !std::path::Path::new(&segment.save_file).exists() || self.ignore_cache {
+            let meta = std::fs::metadata(&segment.save_file);
+            let exists = if let Ok(meta) = meta { meta.len() > 0 } else { false };
+            if !exists || self.ignore_cache {
                 let (uri, file, timeout) =
                     (segment.uri.clone(), segment.save_file.clone(), self.timeout);
                 tasks.spawn(

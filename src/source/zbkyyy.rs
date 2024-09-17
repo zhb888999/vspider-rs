@@ -67,7 +67,48 @@ impl FilmInfo for ZBKYYY {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct SearchResult {
+    pub name: String,
+    pub vtype: String,
+    pub score: String,    
+    pub film: ZBKYYY,
+}
+
 impl ZBKYYY {
+    pub async fn search(info: &str) -> Result<Vec<SearchResult>, reqwest::Error> {
+        let mut host = Url::parse("https://zbkyyy.com").unwrap();
+        let mut search_url = host.join("qyvodsearch/-------------.html").unwrap();
+        search_url.query_pairs_mut().append_pair("wd", info);
+        let body = reqwest::get(search_url.as_str()).await?.text().await?;
+        let html = Html::parse_document(&body);
+
+        let mut result: Vec<SearchResult> = Vec::new();
+
+        let search_selector = Selector::parse("div.intro_con").unwrap();
+        let score_selector = Selector::parse("div.tit span.s_score").unwrap();
+        let name_selector = Selector::parse("div.tit span.s_tit a strong").unwrap();
+        let type_selector = Selector::parse("div.tit span.s_type").unwrap();
+        let url_selector = Selector::parse("div.tit span.s_tit a").unwrap();
+        let films = html.select(&search_selector);
+        for film in films {
+            let fscore = film.select(&score_selector).next().unwrap().inner_html();
+            let ftype = film.select(&type_selector).next().unwrap().inner_html();
+            let fname = film.select(&name_selector).next().unwrap().inner_html();
+            let furl = film.select(&url_selector).next().unwrap().value().attr("href").unwrap();
+            host.set_path(&furl);
+
+            result.push(SearchResult{
+                name: fname,
+                vtype: ftype,
+                score: fscore,
+                film: ZBKYYY::new(host.as_str()),
+            });
+        }
+
+        Ok(result)
+    }
+
     pub fn new(url: &str) -> Self {
         Self {
             url: url.to_string(),
@@ -83,6 +124,7 @@ impl ZBKYYY {
         let body = reqwest::get(&self.url).await?.text().await?;
         let html = Html::parse_document(&body);
         let info_dict = self.parse_info(&html);
+        println!("url: {:#?}", self.url);
         self.name = info_dict.get("影片名称").unwrap().to_string();
         self.release_time = info_dict.get("上映时间").unwrap().to_string();
         self.genre = info_dict.get("影片类型").unwrap().to_string();

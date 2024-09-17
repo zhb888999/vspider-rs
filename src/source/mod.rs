@@ -1,10 +1,9 @@
 mod zbkyyy;
 mod ijujitv;
-mod jugougou;
 
 pub use zbkyyy::ZBKYYY;
+pub use zbkyyy::SearchResult;
 pub use ijujitv::IJUJITV;
-pub use jugougou::JUGOUGOU;
 
 pub trait FilmInfo {
     fn name(&self) -> &str;
