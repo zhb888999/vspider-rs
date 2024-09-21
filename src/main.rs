@@ -1,3 +1,4 @@
+mod vrsr;
 mod m3u8;
 mod source;
 use source::{FilmInfo, ZBKYYY, IJUJITV};
@@ -86,13 +87,49 @@ async fn main() -> Result<(), DownloadError> {
     // let mut film = IJUJITV::from_id(5139);
     // film.parse().await?;
     // download(&film).await?;
-    let mut result = ZBKYYY::search("海贼王").await?;
-    for film in result.iter_mut() {
-        film.film.parse().await?;
-        println!("{}", film.film.name());
-        download(&film.film).await?;
-    }
+    // let mut result = ZBKYYY::search("海贼王").await?;
+    // for film in result.iter_mut() {
+    //     film.film.parse().await?;
+    //     println!("{}", film.film.name());
+    //     download(&film.film).await?;
+    // }
+    test_vrsr().await.unwrap();
 
+    Ok(())
+}
+
+// #[tokio::test()]
+async fn test_vrsr() -> Result<(), vrsr::error::Error> {
+    use vrsr::{RequestorBuilder, ZBKYYYParser};
+    use vrsr::create_resource;
+    use vrsr::{Resource, Teleplay, Episode};
+
+    let requestor = RequestorBuilder::new().build();
+    let zbkyyy = ZBKYYYParser::new();
+
+    let mut resource = create_resource(requestor.clone(), zbkyyy.clone());
+    let teleplays = resource.search("火影忍者").await?;
+
+    for teleplay in teleplays.iter() {
+        let mut teleplay_locked  = teleplay.lock().await;
+        let teleplay_sr = teleplay_locked.request().await?;
+        for result in teleplay_sr.iter() {
+            let mut tasks = tokio::task::JoinSet::new();
+            for episode in result.iter() {
+                let episode = episode.clone();
+                tasks.spawn( async move {
+                    episode.lock().await.request().await
+                });
+            }
+            let results = tasks.join_all().await;
+            for res in results {
+                if let Ok(uri) = res {
+                    println!(">>{}", uri.uri);
+                }
+            }
+        }
+    }
+    
     Ok(())
 }
 
