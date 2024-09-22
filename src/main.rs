@@ -100,18 +100,20 @@ async fn main() -> Result<(), DownloadError> {
 
 // #[tokio::test()]
 async fn test_vrsr() -> Result<(), vrsr::error::Error> {
-    use vrsr::{RequestorBuilder, ZBKYYYParser};
+    use vrsr::{RequestorBuilder, ZBKYYYParser, IJUJITVParser};
     use vrsr::create_resource;
     use vrsr::{Resource, Teleplay, Episode};
 
     let requestor = RequestorBuilder::new().build();
-    let zbkyyy = ZBKYYYParser::new();
+    let parser = ZBKYYYParser::new();
+    // let parser = IJUJITVParser::new();
 
-    let mut resource = create_resource(requestor.clone(), zbkyyy.clone());
-    let teleplays = resource.search("火影忍者").await?;
+    let mut resource = create_resource(requestor, parser);
+    let teleplays = resource.search("龙猫").await?;
 
     for teleplay in teleplays.iter() {
         let mut teleplay_locked  = teleplay.lock().await;
+        println!("@@{}", teleplay_locked.title());
         let teleplay_sr = teleplay_locked.request().await?;
         for result in teleplay_sr.iter() {
             let mut tasks = tokio::task::JoinSet::new();
@@ -122,9 +124,18 @@ async fn test_vrsr() -> Result<(), vrsr::error::Error> {
                 });
             }
             let results = tasks.join_all().await;
+            let mut builder = M3U8DownloadBuilder::new();
             for res in results {
                 if let Ok(uri) = res {
                     println!(">>{}", uri.uri);
+                    let mut downloader = builder
+                        .uri(uri.uri)
+                        .timeout(3)
+                        .save_file("test.mp4")
+                        .ignore_cache(true)
+                        .build();
+                    downloader.download().await.unwrap();
+                    break;
                 }
             }
         }

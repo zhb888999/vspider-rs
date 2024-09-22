@@ -1,3 +1,5 @@
+use scraper::error::SelectorErrorKind;
+
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -9,6 +11,15 @@ pub enum Error {
     ResponseFailed(u16),
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
-    #[error("parse error: {0}")]
-    ParseError(String)
+    #[error("Parser error: {0}")]
+    ParseError(String),
+    #[error("serde json error: {0}")]
+    SerdeJsonError(#[from] serde_json::Error),
+}
+
+
+impl<'a> From<SelectorErrorKind<'a>> for Error {
+    fn from(e: SelectorErrorKind) -> Self {
+        Error::ParseError(format!("Selector error: {}", e))
+    }
 }

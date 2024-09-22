@@ -10,6 +10,7 @@ mod request;
 mod parser;
 
 pub use self::parser::zbkyyy::ZBKYYYParser as ZBKYYYParser;
+pub use self::parser::ijujitv::IJUJITVParser as IJUJITVParser;
 pub use self::request::RequestorBuilder as RequestorBuilder;
 
 
@@ -45,7 +46,7 @@ impl Default for Uri {
 }
 
 pub trait EpisodeParse {
-    fn parse(&self, html: &str) -> Result<Uri, self::error::Error>;
+    async fn parse(&self, html: &str, _requestor: Arc<impl Request>) -> Result<Uri, self::error::Error>;
 }
 
 #[derive(Debug, Clone)]
@@ -120,22 +121,27 @@ where
             &self.info.url, 
             Duration::new(24 * 60 * 60 * 30, 0)
         ).await?;
-        self.uri = self.parser.parse(&body)?;
+        self.uri = self.parser.parse(&body, self.requestor.clone()).await?;
         return Ok(self.uri.clone());
     }
 }
+
 
 #[derive(Debug, Clone)]
 pub struct TeleplayInfo {
     pub title: String,
     pub home_page: String,
-    pub release_time: String,
-    pub genre: String,
-    pub language: String,
-    pub director: String,    
-    pub starring: String,
-    pub introduction: String,
-    pub region: String,
+    pub release_time: Option<String>,
+    pub language: Option<String>,
+    pub director: Option<String>,    
+    pub starring: Option<String>,
+    pub introduction: Option<String>,
+    pub genre: Option<String>,
+    pub region: Option<String>,
+    pub update_time: Option<String>,
+    pub score: Option<String>,
+    pub plot: Option<String>,
+    pub cover: Option<String>,
 }
 
 impl Default for TeleplayInfo {
@@ -143,19 +149,23 @@ impl Default for TeleplayInfo {
         Self {
             title: String::new(),
             home_page: String::new(),
-            release_time: String::new(),
-            genre: String::new(),
-            language: String::new(),
-            director: String::new(),
-            starring: String::new(),
-            introduction: String::new(),
-            region: String::new(),
+            release_time: None,
+            language: None,
+            director: None,
+            starring: None,
+            introduction: None,
+            genre: None,
+            region: None,
+            update_time: None,
+            score: None,
+            plot: None,
+            cover: None,
         }
     }
 }
 
 pub trait TeleplayParse {
-    fn parse(&self, html: &str) -> Result<Vec<Vec<EpisodeInfo>>, self::error::Error>;
+    async fn parse(&self, html: &str, _teleplay_info: &mut TeleplayInfo, _requestor: Arc<impl Request>) -> Result<Vec<Vec<EpisodeInfo>>, self::error::Error>;
 }
 
 #[derive(Debug, Clone)]
@@ -183,15 +193,20 @@ where
 {
     type EpisodeType: Episode<R, EP> + 'a;
     fn new(info: TeleplayInfo, requester: Arc<R>, parser: Arc<P>, eparser: Arc<EP>) -> Self;
-    fn home_page(&self) -> &str;
     fn title(&self) -> &str;
-    fn release_time(&self) -> &str;
-    fn genre(&self) -> &str;
-    fn language(&self) -> &str;
-    fn director(&self) -> &str;
-    fn starring(&self) -> &str;
-    fn introduction(&self) -> &str;
-    fn region(&self) -> &str;
+    fn home_page(&self) -> &str;
+    fn release_time(&self) -> Option<&str>;
+    fn language(&self) -> Option<&str>;
+    fn director(&self) -> Option<&str>;
+    fn starring(&self) -> Option<&str>;
+    fn introduction(&self) -> Option<&str>;
+    fn genre(&self) -> Option<&str>;
+    fn region(&self) -> Option<&str>;
+    fn update_time(&self) -> Option<&str>;
+    fn score(&self) -> Option<&str>;
+    fn plot(&self) -> Option<&str>;
+    fn cover(&self) -> Option<&str>;
+
     fn episodes(&self) -> &Vec<Vec<Arc<Mutex<Self::EpisodeType>>>>;
     async fn request(&'a mut self) -> Result<&'a Vec<Vec<Arc<Mutex<Self::EpisodeType>>>>, self::error::Error>;
 }
@@ -214,33 +229,70 @@ where
             episodes: Vec::new(),
         }
     }
-    fn home_page(&self) -> &str {   
-        return self.info.home_page.as_str();
-    }
     fn title(&self) -> &str {
         return self.info.title.as_str();
     }
-    fn release_time(&self) -> &str {
-        return self.info.release_time.as_str();
+    fn home_page(&self) -> &str {   
+        return self.info.home_page.as_str();
     }
-    fn genre(&self) -> &str {
-        return self.info.genre.as_str();
+    fn release_time(&self) -> Option<&str> {
+        self.info.release_time
+            .as_ref()
+            .map(|s| s.as_str())
     }
-    fn language(&self) -> &str {
-        return self.info.language.as_str();
+    fn language(&self) -> Option<&str> {
+        self.info.language
+            .as_ref()
+            .map(|s| s.as_str())
     }
-    fn director(&self) -> &str {
-        return self.info.director.as_str();
+    fn director(&self) -> Option<&str> {
+        self.info.director
+            .as_ref()
+            .map(|s| s.as_str())
     }
-    fn starring(&self) -> &str {
-        return self.info.starring.as_str();    
+    fn starring(&self) -> Option<&str> {
+        self.info.starring
+            .as_ref()
+            .map(|s| s.as_str())
     }
-    fn introduction(&self) -> &str {
-        return self.info.introduction.as_str();
+    fn introduction(&self) -> Option<&str> {
+        self.info.introduction
+            .as_ref()
+            .map(|s| s.as_str())
     }
-    fn region(&self) -> &str {
-        return self.info.region.as_str();
+
+    fn cover(&self) -> Option<&str> {
+        self.info.cover
+            .as_ref()
+            .map(|s| s.as_str())
     }
+
+    fn genre(&self) -> Option<&str> {
+        self.info.genre
+            .as_ref()
+            .map(|s| s.as_str())
+    }
+    fn region(&self) -> Option<&str> {
+        self.info.region
+            .as_ref()
+            .map(|s| s.as_str())
+    }
+    fn update_time(&self) -> Option<&str> {
+        self.info.update_time
+            .as_ref()
+            .map(|s| s.as_str())
+    }
+    fn score(&self) -> Option<&str> {
+        self.info.score
+            .as_ref()
+            .map(|s| s.as_str())
+    }
+    fn plot(&self) -> Option<&str> {
+        self.info.plot
+            .as_ref()
+            .map(|s| s.as_str())
+    }
+
     fn episodes(&self) -> &Vec<Vec<Arc<Mutex<Self::EpisodeType>>>> {
         return self.episodes.as_ref();
     }
@@ -251,7 +303,7 @@ where
             Duration::new(24 * 60 * 60 * 30, 0)
         ).await?;
         let mut hub_url = Url::parse(&self.info.home_page).unwrap();
-        let episodes_info = self.parser.parse(&response)?;
+        let episodes_info = self.parser.parse(&response, &mut self.info, self.requestor.clone()).await?;
         for episode_infos in episodes_info {
             let mut episodes_list = Vec::new();
             for mut episode_info in episode_infos {
@@ -268,7 +320,7 @@ where
 
 
 pub trait ResourceParse {
-    fn parse(&self, html: &str) -> Result<Vec<TeleplayInfo>, self::error::Error>;
+    async fn parse(&self, html: &str, _requestor: Arc<impl Request>) -> Result<Vec<TeleplayInfo>, self::error::Error>;
 }
 
 #[derive(Debug, Clone)]
@@ -370,7 +422,7 @@ where
             &search_url.to_string(), 
             Duration::new(24 * 60 * 60 * 30, 0)
         ).await?;
-        let teleplay_infos = self.parser.parse(&respose)?;
+        let teleplay_infos = self.parser.parse(&respose, self.requestor.clone()).await?;
         for mut info in teleplay_infos {
             host.set_path(&info.home_page);
             info.home_page = host.to_string();

@@ -7,17 +7,17 @@ use serde_json::Value;
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]
-pub struct ZBKYYYParser {
+pub struct IJUJITVParser {
     info: ResourceInfo,
 }
 
-impl ZBKYYYParser {
+impl IJUJITVParser {
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
             info: ResourceInfo {
-                name: "真不卡影院".to_string(),
-                host: "https://www.zbkyyy.com".to_string(),
-                search_path: "qyvodsearch/-------------.html".to_string(),
+                name: "剧集TV".to_string(),
+                host: "https://v.ijujitv.cc".to_string(),
+                search_path: "search/-------------.html".to_string(),
                 search_key: "wd".to_string(),
             },
         })
@@ -39,13 +39,13 @@ impl ZBKYYYParser {
     }
 }
 
-impl GenerateResourceInfo for ZBKYYYParser {
+impl GenerateResourceInfo for IJUJITVParser {
     fn generate(&self) -> ResourceInfo {
         self.info.clone()
     }
 }
 
-impl ResourceParse for ZBKYYYParser {
+impl ResourceParse for IJUJITVParser {
     async fn parse(&self, html: &str, _requestor: Arc<impl Request>) -> Result<Vec<TeleplayInfo>, Error> {
         // println!("{:?}", html);
         // panic!("not implemented");
@@ -53,25 +53,16 @@ impl ResourceParse for ZBKYYYParser {
 
         let mut result: Vec<TeleplayInfo> = Vec::new();
 
-        let search_selector = Selector::parse("div.intro_con")?;
-        let score_selector = Selector::parse("div.tit span.s_score")?;
-        let name_selector = Selector::parse("div.tit span.s_tit a strong")?;
-        let type_selector = Selector::parse("div.tit span.s_type")?;
-        let url_selector = Selector::parse("div.tit span.s_tit a")?;
+        let search_selector = Selector::parse("div.m-list-inner")?;
+        let name_selector = Selector::parse("ul.m-list li.m-item a.thumb")?;
+        let url_selector = Selector::parse("ul.m-list li.m-item a.thumb")?;
         let films = html.select(&search_selector);
         for film in films {
-            let _fscore = film.select(&score_selector)
-                .next()
-                .ok_or_else(|| Error::ParseError("Failed to find score".to_string()))?
-                .inner_html();
-            let _ftype = film.select(&type_selector)
-                .next()
-                .ok_or_else(|| Error::ParseError("Failed to find type".to_string()))?
-                .inner_html();
             let fname = film.select(&name_selector)
                 .next()
-                .ok_or_else(|| Error::ParseError("Failed to find name".to_string()))?
-                .inner_html();
+                .ok_or_else(|| Error::ParseError("Failed to find title".to_string()))?
+                .value().attr("title")
+                .ok_or_else(|| Error::ParseError("Failed to find title".to_string()))?;
             let furl = film.select(&url_selector)
                 .next()
                 .ok_or_else(|| Error::ParseError("Failed to find home page".to_string()))?
@@ -87,11 +78,12 @@ impl ResourceParse for ZBKYYYParser {
     }
 }
 
-impl TeleplayParse for ZBKYYYParser {
+impl TeleplayParse for IJUJITVParser {
     async fn parse(&self, html: &str, _teleplay_info: &mut TeleplayInfo, _requestor: Arc<impl Request>) -> Result<Vec<Vec<EpisodeInfo>>, Error> {
+        println!("{:?}", html);
         let html = Html::parse_document(&html);
         let mut sources: Vec<Vec<EpisodeInfo>> = Vec::new();
-        let srcs_selector = Selector::parse("div.v_con_box ul")?;
+        let srcs_selector = Selector::parse("div.tab-content.stui-pannel_bd.col-pd.clearfix ul")?;
         let uri_selector = Selector::parse("li a")?;
         let srcs = html.select(&srcs_selector);
         for src in srcs {
@@ -101,6 +93,9 @@ impl TeleplayParse for ZBKYYYParser {
                 let href = url.value()
                     .attr("href")
                     .ok_or_else(|| Error::ParseError("Failed to find episode url".to_string()))?;
+                if href.starts_with("//") {
+                    continue;
+                }
                 let mut info = EpisodeInfo::default();
                 info.url = href.to_string();
                 source.push(info); 
@@ -112,10 +107,10 @@ impl TeleplayParse for ZBKYYYParser {
     }
 }
 
-impl EpisodeParse for ZBKYYYParser {
+impl EpisodeParse for IJUJITVParser {
     async fn parse(&self, html: &str, _requestor: Arc<impl Request>) -> Result<Uri, Error> {
         let html = Html::parse_document(html);
-        let m3u8_selector = Selector::parse("div.iplays script")?;
+        let m3u8_selector = Selector::parse("div.playBox script")?;
         let m3u8_json = html.select(&m3u8_selector)
             .next()
             .ok_or_else(|| Error::ParseError("Failed to find m3u8 json msg".to_string()))?

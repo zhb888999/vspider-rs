@@ -51,8 +51,16 @@ impl Requestor {
     async fn read_cache(&self, path: &str) -> Result<String, std::io::Error> {
         if std::path::Path::new(&path).exists() {
             let mut file = tokio::fs::File::open(path).await?;
+
+            // let mut buffer = Vec::new();
+            // file.read_to_end(&mut buffer).await?;
+            // let content = String::from_utf8(buffer)
+            //     .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+
             let mut content = String::new();
             file.read_to_string(&mut content).await?;
+
+            println!("read cache success, path: {}", path);
             Ok(content)
         } else {
             Err(std::io::Error::new(std::io::ErrorKind::NotFound, "cache not found"))
