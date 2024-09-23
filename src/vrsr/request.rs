@@ -60,7 +60,7 @@ impl Requestor {
             let mut content = String::new();
             file.read_to_string(&mut content).await?;
 
-            println!("read cache success, path: {}", path);
+            // println!("read cache success, path: {}", path);
             Ok(content)
         } else {
             Err(std::io::Error::new(std::io::ErrorKind::NotFound, "cache not found"))

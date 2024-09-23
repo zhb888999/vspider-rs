@@ -1,5 +1,5 @@
 use super::super::{ResourceInfo, TeleplayInfo, EpisodeInfo, Uri, URIType};
-use super::super::{GenerateResourceInfo, ResourceParse, TeleplayParse, EpisodeParse, Request};
+use super::super::{GenerateInfo, ResourceParse, TeleplayParse, EpisodeParse, Request};
 use scraper::{Html, Selector};
 use std::collections::HashMap;
 use super::super::error::Error;
@@ -39,9 +39,19 @@ impl IJUJITVParser {
     }
 }
 
-impl GenerateResourceInfo for IJUJITVParser {
-    fn generate(&self) -> ResourceInfo {
+impl GenerateInfo for IJUJITVParser {
+    fn generate_resource_info(&self) -> ResourceInfo {
         self.info.clone()
+    }
+
+    fn generate_teleplay_info(&self, title: &str, id: u64) -> TeleplayInfo {
+        let mut host_url = url::Url::parse(&self.info.host).unwrap();
+        host_url.set_path(&format!("detail/{}.html", id));
+        TeleplayInfo {
+            title: title.to_string(),
+            home_page: host_url.to_string(),
+            ..TeleplayInfo::default()
+        }
     }
 }
 

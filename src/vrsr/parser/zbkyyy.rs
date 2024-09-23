@@ -1,5 +1,5 @@
 use super::super::{ResourceInfo, TeleplayInfo, EpisodeInfo, Uri, URIType};
-use super::super::{GenerateResourceInfo, ResourceParse, TeleplayParse, EpisodeParse, Request};
+use super::super::{GenerateInfo, ResourceParse, TeleplayParse, EpisodeParse, Request};
 use scraper::{Html, Selector};
 use std::collections::HashMap;
 use super::super::error::Error;
@@ -39,51 +39,93 @@ impl ZBKYYYParser {
     }
 }
 
-impl GenerateResourceInfo for ZBKYYYParser {
-    fn generate(&self) -> ResourceInfo {
+impl GenerateInfo for ZBKYYYParser {
+    fn generate_resource_info(&self) -> ResourceInfo {
         self.info.clone()
+    }
+
+    fn generate_teleplay_info(&self, title: &str, id: u64) -> TeleplayInfo {
+        let mut host_url = url::Url::parse(&self.info.host).unwrap();
+        host_url.set_path(&format!("qyvoddetail/{}.html", id));
+        TeleplayInfo {
+            title: title.to_string(),
+            home_page: host_url.to_string(),
+            ..TeleplayInfo::default()
+        }
     }
 }
 
 impl ResourceParse for ZBKYYYParser {
     async fn parse(&self, html: &str, _requestor: Arc<impl Request>) -> Result<Vec<TeleplayInfo>, Error> {
-        // println!("{:?}", html);
-        // panic!("not implemented");
         let html = Html::parse_document(&html);
+        let mut infos: Vec<TeleplayInfo> = Vec::new();
 
-        let mut result: Vec<TeleplayInfo> = Vec::new();
+        let search_list_selector = Selector::parse("div.tv-bd.search-list div.item.clearfix")?;
+        let title_selector = Selector::parse("div.item_txt div.intro_con div.tit span.s_tit a strong")?;
+        let home_page_selector = Selector::parse("div.item_txt div.intro_con div.tit span.s_tit a")?;
+        let score_selector = Selector::parse("div.item_txt div.intro_con div.tit span.s_score")?;
+        let introduction_selector = Selector::parse("div.item_txt div.intro_con div.p_intro")?;
+        let cover_selector = Selector::parse("div.item_pic img")?;
+        let other_selector = Selector::parse("div.item_txt ul.txt_list.clearfix li.clearfix")?;
+        let name_selector = Selector::parse("li>a")?;
+        let times_lang_selector = Selector::parse("em>a")?;
 
-        let search_selector = Selector::parse("div.intro_con")?;
-        let score_selector = Selector::parse("div.tit span.s_score")?;
-        let name_selector = Selector::parse("div.tit span.s_tit a strong")?;
-        let type_selector = Selector::parse("div.tit span.s_type")?;
-        let url_selector = Selector::parse("div.tit span.s_tit a")?;
-        let films = html.select(&search_selector);
-        for film in films {
-            let _fscore = film.select(&score_selector)
-                .next()
-                .ok_or_else(|| Error::ParseError("Failed to find score".to_string()))?
-                .inner_html();
-            let _ftype = film.select(&type_selector)
-                .next()
-                .ok_or_else(|| Error::ParseError("Failed to find type".to_string()))?
-                .inner_html();
-            let fname = film.select(&name_selector)
+        let teleplays = html.select(&search_list_selector);
+        for teleplay in teleplays {
+            let title = teleplay.select(&title_selector)
                 .next()
                 .ok_or_else(|| Error::ParseError("Failed to find name".to_string()))?
                 .inner_html();
-            let furl = film.select(&url_selector)
+            let home_page = teleplay.select(&home_page_selector)
                 .next()
                 .ok_or_else(|| Error::ParseError("Failed to find home page".to_string()))?
                 .value().attr("href")
                 .ok_or_else(|| Error::ParseError("Failed to find home page".to_string()))?;
-            let mut info = TeleplayInfo::default();
-            info.home_page = furl.to_string();
-            info.title = fname.to_string();
-            result.push(info);
-        }
+            let score = teleplay.select(&score_selector)
+                .next()
+                .ok_or_else(|| Error::ParseError("Failed to find score".to_string()))?
+                .inner_html();
+            let introduction = teleplay.select(&introduction_selector)
+                .next()
+                .ok_or_else(|| Error::ParseError("Failed to find introduction".to_string()))?
+                .inner_html();
+            let cover = teleplay.select(&cover_selector)
+                .next()
+                .ok_or_else(|| Error::ParseError("Failed to find cover".to_string()))?
+                .value().attr("src")
+                .ok_or_else(|| Error::ParseError("Failed to find cover".to_string()))?;
 
-        Ok(result)
+            let mut others = teleplay.select(&other_selector);
+            let li0 = others.next()
+                .ok_or_else(|| Error::ParseError("Failed to find other info".to_string()))?;
+            let times_lang = li0.select(&times_lang_selector)
+                .map(|v|v.inner_html())
+                .collect::<Vec<_>>();
+            let director = li0
+                .select(&name_selector)
+                .map(|v|v.inner_html())
+                .collect::<Vec<_>>();
+
+            let li1 = others.next()
+                .ok_or_else(|| Error::ParseError("Failed to find other info".to_string()))?;
+            let starring = li1.select(&name_selector)
+                .map(|v|v.inner_html())
+                .collect::<Vec<_>>();
+
+            let mut info = TeleplayInfo::default();
+            info.home_page = home_page.to_string();
+            info.title = title.to_string();
+            info.times.replace(times_lang[0].to_string());
+            info.language.replace(times_lang[1].to_string());
+            info.score.replace(score.to_string());
+            info.cover.replace(cover.to_string());
+            info.introduction.replace(introduction.to_string());
+            info.director.replace(director);
+            info.starring.replace(starring);
+            println!("info: {:#?}", info);
+            infos.push(info);
+        }
+        Ok(infos)
     }
 }
 

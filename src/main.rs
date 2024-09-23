@@ -5,6 +5,7 @@ use source::{FilmInfo, ZBKYYY, IJUJITV};
 use source::SearchResult;
 
 use m3u8::{DownloadError, M3U8DownloadBuilder};
+use vrsr::{GenerateInfo, ResourceParse, TeleplayParse, EpisodeParse};
 use std::collections::HashMap;
 
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
@@ -94,7 +95,7 @@ async fn main() -> Result<(), DownloadError> {
     //     download(&film.film).await?;
     // }
     test_vrsr().await.unwrap();
-
+    // test_vrsr_teleplay().await.unwrap();
     Ok(())
 }
 
@@ -109,7 +110,7 @@ async fn test_vrsr() -> Result<(), vrsr::error::Error> {
     // let parser = IJUJITVParser::new();
 
     let mut resource = create_resource(requestor, parser);
-    let teleplays = resource.search("龙猫").await?;
+    let teleplays = resource.search("海贼王").await?;
 
     for teleplay in teleplays.iter() {
         let mut teleplay_locked  = teleplay.lock().await;
@@ -128,16 +129,59 @@ async fn test_vrsr() -> Result<(), vrsr::error::Error> {
             for res in results {
                 if let Ok(uri) = res {
                     println!(">>{}", uri.uri);
-                    let mut downloader = builder
-                        .uri(uri.uri)
-                        .timeout(3)
-                        .save_file("test.mp4")
-                        .ignore_cache(true)
-                        .build();
-                    downloader.download().await.unwrap();
-                    break;
+                    // let mut downloader = builder
+                    //     .uri(uri.uri)
+                    //     .timeout(3)
+                    //     .save_file("test.mp4")
+                    //     .build();
+                    // downloader.download().await.unwrap();
+                    // break;
                 }
             }
+        }
+    }
+    
+    Ok(())
+}
+
+async fn test_vrsr_teleplay() -> Result<(), vrsr::error::Error> {
+    use vrsr::{RequestorBuilder, ZBKYYYParser, IJUJITVParser};
+    use vrsr::create_teleplay;
+    use vrsr::{Teleplay, Episode};
+
+    let requestor = RequestorBuilder::new().build();
+
+    let parser  = ZBKYYYParser::new();
+    // let parser  = IJUJITVParser::new();
+
+    let mut teleplay = create_teleplay(requestor, parser, "探索新境", 96601);
+    let title = teleplay.title().to_string();
+    let base_dir = std::path::Path::new(&title);
+    std::fs::create_dir_all(base_dir)?;
+    let teleplay_sr = teleplay.request().await?;
+    for result in teleplay_sr.iter() {
+        let mut tasks = tokio::task::JoinSet::new();
+        for episode in result.iter() {
+            let episode = episode.clone();
+            tasks.spawn( async move {
+                episode.lock().await.request().await
+            });
+        }
+        tasks.join_all().await;
+
+        let mut builder = M3U8DownloadBuilder::new();
+        for (index,episode) in result.iter().enumerate() {
+            let save_file = base_dir.join(format!("第{:02}集.mp4", index + 1));
+            if std::path::Path::exists(&save_file) { continue; }
+            if index < 6 { continue; }
+            let uri = episode.lock().await.uri();
+            let mut downloader = builder
+                .uri(uri.uri)
+                .timeout(3)
+                .save_file(save_file.to_string_lossy())
+                .ignore_cache(true)
+                .build();
+            downloader.download().await.unwrap();
         }
     }
     

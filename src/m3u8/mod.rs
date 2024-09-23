@@ -359,9 +359,9 @@ impl M3U8DownloadBuilder {
 #[tokio::test()]
 async fn test_download() {
     let mut builder = M3U8DownloadBuilder::new();
-    builder.uri("https://bitdash-a.akamaihd.net/content/sintel/hls/playlist.m3u8")
-        .save_file("test.mp4")
-        .try_count(3)
+    builder.uri("https://svip.high25-playback.com/20240922/7211_a45727d7/index.m3u8")
+        .save_file("第08集.mp4")
+        // .try_count(3)
         .timeout(5)
         .ignore_cache(true);
     let mut downloader = builder.build();
