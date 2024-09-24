@@ -22,21 +22,6 @@ impl ZBKYYYParser {
             },
         })
     }
-
-    #[allow(unused)]
-    fn parse_info(&self, html: &Html) -> HashMap<String, String> {
-        let info_selector = Selector::parse("div.tv-bd p:has(b)").unwrap();
-        let infos = html.select(&info_selector);
-        let mut info_dict: HashMap<String, String> = HashMap::new();
-        for info in infos {
-            let texts = info.text().collect::<Vec<_>>();
-            if texts.len() < 2 { continue; }
-            let key = texts[0].trim().split("：").collect::<Vec<_>>()[0].to_string();
-            let value = texts[1].trim().to_string();
-            info_dict.insert(key, value);
-        }
-        info_dict
-    }
 }
 
 impl GenerateInfo for ZBKYYYParser {
@@ -122,7 +107,6 @@ impl ResourceParse for ZBKYYYParser {
             info.introduction.replace(introduction.to_string());
             info.director.replace(director);
             info.starring.replace(starring);
-            println!("info: {:#?}", info);
             infos.push(info);
         }
         Ok(infos)
@@ -132,6 +116,37 @@ impl ResourceParse for ZBKYYYParser {
 impl TeleplayParse for ZBKYYYParser {
     async fn parse(&self, html: &str, _teleplay_info: &mut TeleplayInfo, _requestor: Arc<impl Request>) -> Result<Vec<Vec<EpisodeInfo>>, Error> {
         let html = Html::parse_document(&html);
+        let update_selector = Selector::parse("div.txt_intro_con ul.txt_list.clearfix li:nth-child(2)")?;
+        _teleplay_info.update_time.replace(html.select(&update_selector)
+            .next().ok_or_else(|| Error::ParseError("Failed to find update time".to_string()))?
+            .last_child().ok_or_else(|| Error::ParseError("Failed to find update time".to_string()))?
+            .value().as_text().ok_or_else(|| Error::ParseError("Failed to find update time".to_string()))?
+            .to_string());
+        let tv_bd_selector = Selector::parse("div.tv-bd")?;
+        let tv_bd = html.select(&tv_bd_selector).next().unwrap();
+
+        let region_selector = Selector::parse("p:nth-child(4)")?;
+        _teleplay_info.region.replace(tv_bd.select(&region_selector)
+            .next().ok_or_else(|| Error::ParseError("Failed to find region".to_string()))?
+            .last_child().ok_or_else(|| Error::ParseError("Failed to find region".to_string()))?
+            .value().as_text().ok_or_else(|| Error::ParseError("Failed to find region".to_string()))?
+            .to_string());
+
+        let genre_selector = Selector::parse("p:nth-child(5)")?;
+        _teleplay_info.genre.replace(tv_bd.select(&genre_selector)
+            .next().ok_or_else(|| Error::ParseError("Failed to find genre".to_string()))?
+            .last_child().ok_or_else(|| Error::ParseError("Failed to find genre".to_string()))?
+            .value().as_text().ok_or_else(|| Error::ParseError("Failed to find genre".to_string()))?
+            .to_string());
+
+        let plot_selector = Selector::parse("p:nth-child(15)")?;
+        _teleplay_info.plot.replace(tv_bd.select(&plot_selector)
+            .next().ok_or_else(|| Error::ParseError("Failed to find plot".to_string()))?
+            .last_child().ok_or_else(|| Error::ParseError("Failed to find plot".to_string()))?
+            .value().as_text().ok_or_else(|| Error::ParseError("Failed to find plot".to_string()))?
+            .to_string());
+
+        println!("info:\n{}", _teleplay_info);
         let mut sources: Vec<Vec<EpisodeInfo>> = Vec::new();
         let srcs_selector = Selector::parse("div.v_con_box ul")?;
         let uri_selector = Selector::parse("li a")?;
@@ -140,11 +155,12 @@ impl TeleplayParse for ZBKYYYParser {
             let mut source: Vec<EpisodeInfo> = Vec::new();
             let urls = src.select(&uri_selector);
             for url in urls {
-                let href = url.value()
-                    .attr("href")
-                    .ok_or_else(|| Error::ParseError("Failed to find episode url".to_string()))?;
-                let mut info = EpisodeInfo::default();
-                info.url = href.to_string();
+                let info = EpisodeInfo {
+                    name: url.inner_html(),
+                    url: url.value().attr("href")
+                    .ok_or_else(|| Error::ParseError("Failed to find episode url".to_string()))?
+                    .to_string(),
+                };
                 source.push(info); 
             }
             sources.push(source);

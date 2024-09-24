@@ -110,7 +110,7 @@ async fn test_vrsr() -> Result<(), vrsr::error::Error> {
     // let parser = IJUJITVParser::new();
 
     let mut resource = create_resource(requestor, parser);
-    let teleplays = resource.search("海贼王").await?;
+    let teleplays = resource.search("天空之城").await?;
 
     for teleplay in teleplays.iter() {
         let mut teleplay_locked  = teleplay.lock().await;

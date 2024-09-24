@@ -1,4 +1,6 @@
+use std::collections::hash_set::Intersection;
 use std::marker::PhantomData;
+use std::path::Display;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
@@ -167,6 +169,29 @@ impl Default for TeleplayInfo {
             cover: None,
         }
     }
+}
+
+impl std::fmt::Display for TeleplayInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "|影片名称:{}\n", self.title)?;
+        if let Some(director) = self.director.as_ref() {
+            write!(f, "|导演:{} ", director.join(","))?;
+        };
+        if let Some(ref times) = self.times {
+            write!(f, "年代:{} ", times)?;
+        };
+        if let Some(ref language) = self.language {
+            write!(f, "语言:{}\n", language)?;
+        };
+        if let Some(ref starring) = self.starring {
+            write!(f, "|演员: {}\n", starring.join("/"))?;
+        };
+        if let Some(ref intersection) = self.introduction {
+            write!(f, "|简介: {}\n", intersection)?;
+        };
+        Ok(())
+    }
+
 }
 
 pub trait TeleplayParse {
