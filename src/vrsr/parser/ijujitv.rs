@@ -57,40 +57,59 @@ impl GenerateInfo for IJUJITVParser {
 
 impl ResourceParse for IJUJITVParser {
     async fn parse(&self, html: &str, _requestor: Arc<impl Request>) -> Result<Vec<TeleplayInfo>, Error> {
-        // println!("{:?}", html);
-        // panic!("not implemented");
         let html = Html::parse_document(&html);
+        let mut infos: Vec<TeleplayInfo> = Vec::new();
 
-        let mut result: Vec<TeleplayInfo> = Vec::new();
-
-        let search_selector = Selector::parse("div.m-list-inner")?;
-        let name_selector = Selector::parse("ul.m-list li.m-item a.thumb")?;
-        let url_selector = Selector::parse("ul.m-list li.m-item a.thumb")?;
-        let films = html.select(&search_selector);
-        for film in films {
-            let fname = film.select(&name_selector)
-                .next()
-                .ok_or_else(|| Error::ParseError("Failed to find title".to_string()))?
-                .value().attr("title")
-                .ok_or_else(|| Error::ParseError("Failed to find title".to_string()))?;
-            let furl = film.select(&url_selector)
-                .next()
-                .ok_or_else(|| Error::ParseError("Failed to find home page".to_string()))?
-                .value().attr("href")
-                .ok_or_else(|| Error::ParseError("Failed to find home page".to_string()))?;
+        let search_list_selector = Selector::parse("div.m-list-inner ul.m-list li.m-item")?;
+        let teleplays = html.select(&search_list_selector);
+        let a_selector = Selector::parse("a.thumb")?;
+        let img_selector = Selector::parse("a.thumb img")?;
+        let status_selector = Selector::parse("a.thumb div.icon-br span.label")?;
+        let starring_selector = Selector::parse("div.text p.des")?;
+        for teleplay in teleplays {
+            let a = teleplay.select(&a_selector)
+               .next()
+               .ok_or_else(|| Error::ParseError("Failed to find title".to_string()))?;
+            let title = a.value().attr("title");
+            let home_page = a.value().attr("href");
+            let cover = teleplay.select(&img_selector)
+               .next()
+               .ok_or_else(|| Error::ParseError("Failed to find cover".to_string()))?
+               .value().attr("src");
+            let status = teleplay.select(&status_selector)
+               .next()
+               .ok_or_else(|| Error::ParseError("Failed to find status".to_string()))?
+               .inner_html();
+            let starring = teleplay.select(&starring_selector)
+                           .next()
+                           .ok_or_else(|| Error::ParseError("Failed to find director".to_string()))?
+                           .inner_html()
+                           .split(':')
+                           .map(|v| v.trim().to_string())
+                           .collect::<Vec<_>>();
             let mut info = TeleplayInfo::default();
-            info.home_page = furl.to_string();
-            info.title = fname.to_string();
-            result.push(info);
+            info.title = title
+                .ok_or_else(|| Error::ParseError("Failed to find title".to_string()))?
+                .to_string();
+            info.home_page = home_page
+                .ok_or_else(|| Error::ParseError("Failed to find home page".to_string()))?
+                .to_string();
+            info.cover.replace(cover
+                .ok_or_else(|| Error::ParseError("Failed to find cover".to_string()))?
+                .to_string());
+            if starring.len() > 1 {
+                info.starring.replace(starring[1].split(',').map(|v| v.trim().to_string()).collect::<Vec<_>>());
+            }
+            info.status.replace(status.trim().to_string());
+            println!("{}", info);
+            infos.push(info);
         }
-
-        Ok(result)
+        Ok(infos)
     }
 }
 
 impl TeleplayParse for IJUJITVParser {
     async fn parse(&self, html: &str, _teleplay_info: &mut TeleplayInfo, _requestor: Arc<impl Request>) -> Result<Vec<Vec<EpisodeInfo>>, Error> {
-        println!("{:?}", html);
         let html = Html::parse_document(&html);
         let mut sources: Vec<Vec<EpisodeInfo>> = Vec::new();
         let srcs_selector = Selector::parse("div.tab-content.stui-pannel_bd.col-pd.clearfix ul")?;

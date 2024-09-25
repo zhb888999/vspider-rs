@@ -148,6 +148,7 @@ pub struct TeleplayInfo {
     pub score: Option<String>,
     pub plot: Option<String>,
     pub cover: Option<String>,
+    pub status: Option<String>,
 }
 
 impl Default for TeleplayInfo {
@@ -167,13 +168,19 @@ impl Default for TeleplayInfo {
             score: None,
             plot: None,
             cover: None,
+            status: None,
         }
     }
 }
 
 impl std::fmt::Display for TeleplayInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "|影片名称:{}\n", self.title)?;
+        write!(f, "|影片名称:{}", self.title)?;
+        if let Some(ref status) = self.status {
+            write!(f, "[{}]\n", status)?;
+        } else {
+            write!(f, "\n")?;
+        }
         if let Some(director) = self.director.as_ref() {
             write!(f, "|导演:{} ", director.join(","))?;
         };
@@ -184,10 +191,10 @@ impl std::fmt::Display for TeleplayInfo {
             write!(f, "语言:{}\n", language)?;
         };
         if let Some(ref starring) = self.starring {
-            write!(f, "|演员: {}\n", starring.join("/"))?;
+            write!(f, "|演员:{}\n", starring.join("/"))?;
         };
         if let Some(ref intersection) = self.introduction {
-            write!(f, "|简介: {}\n", intersection)?;
+            write!(f, "|简介:{}\n", intersection)?;
         };
         Ok(())
     }
@@ -241,6 +248,7 @@ where
     fn score(&self) -> Option<&str>;
     fn plot(&self) -> Option<&str>;
     fn cover(&self) -> Option<&str>;
+    fn status(&self) -> Option<&str>;
 
     fn episodes(&self) -> &Vec<Vec<Arc<Mutex<Self::EpisodeType>>>>;
     async fn request(
@@ -290,11 +298,9 @@ where
     fn introduction(&self) -> Option<&str> {
         self.info.introduction.as_ref().map(|s| s.as_str())
     }
-
     fn cover(&self) -> Option<&str> {
         self.info.cover.as_ref().map(|s| s.as_str())
     }
-
     fn genre(&self) -> Option<&str> {
         self.info.genre.as_ref().map(|s| s.as_str())
     }
@@ -309,6 +315,9 @@ where
     }
     fn plot(&self) -> Option<&str> {
         self.info.plot.as_ref().map(|s| s.as_str())
+    }
+    fn status(&self) -> Option<&str> {
+        self.info.status.as_ref().map(|s| s.as_str())
     }
 
     fn episodes(&self) -> &Vec<Vec<Arc<Mutex<Self::EpisodeType>>>> {

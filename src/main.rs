@@ -106,15 +106,14 @@ async fn test_vrsr() -> Result<(), vrsr::error::Error> {
     use vrsr::{Resource, Teleplay, Episode};
 
     let requestor = RequestorBuilder::new().build();
-    let parser = ZBKYYYParser::new();
-    // let parser = IJUJITVParser::new();
+    // let parser = ZBKYYYParser::new();
+    let parser = IJUJITVParser::new();
 
     let mut resource = create_resource(requestor, parser);
-    let teleplays = resource.search("天空之城").await?;
+    let teleplays = resource.search("庆余年").await?;
 
     for teleplay in teleplays.iter() {
         let mut teleplay_locked  = teleplay.lock().await;
-        println!("@@{}", teleplay_locked.title());
         let teleplay_sr = teleplay_locked.request().await?;
         for result in teleplay_sr.iter() {
             let mut tasks = tokio::task::JoinSet::new();
@@ -128,7 +127,7 @@ async fn test_vrsr() -> Result<(), vrsr::error::Error> {
             let mut builder = M3U8DownloadBuilder::new();
             for res in results {
                 if let Ok(uri) = res {
-                    println!(">>{}", uri.uri);
+                    // println!(">>{}", uri.uri);
                     // let mut downloader = builder
                     //     .uri(uri.uri)
                     //     .timeout(3)

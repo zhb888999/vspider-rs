@@ -51,6 +51,7 @@ impl ResourceParse for ZBKYYYParser {
         let score_selector = Selector::parse("div.item_txt div.intro_con div.tit span.s_score")?;
         let introduction_selector = Selector::parse("div.item_txt div.intro_con div.p_intro")?;
         let cover_selector = Selector::parse("div.item_pic img")?;
+        let status_selector = Selector::parse("div.item_pic span.v-tips em")?;
         let other_selector = Selector::parse("div.item_txt ul.txt_list.clearfix li.clearfix")?;
         let name_selector = Selector::parse("li>a")?;
         let times_lang_selector = Selector::parse("em>a")?;
@@ -79,6 +80,10 @@ impl ResourceParse for ZBKYYYParser {
                 .ok_or_else(|| Error::ParseError("Failed to find cover".to_string()))?
                 .value().attr("src")
                 .ok_or_else(|| Error::ParseError("Failed to find cover".to_string()))?;
+            let status = teleplay.select(&status_selector)
+                .next()
+                .ok_or_else(|| Error::ParseError("Failed to find status".to_string()))?
+                .inner_html();
 
             let mut others = teleplay.select(&other_selector);
             let li0 = others.next()
@@ -104,6 +109,7 @@ impl ResourceParse for ZBKYYYParser {
             info.language.replace(times_lang[1].to_string());
             info.score.replace(score.to_string());
             info.cover.replace(cover.to_string());
+            info.status.replace(status.to_string());
             info.introduction.replace(introduction.to_string());
             info.director.replace(director);
             info.starring.replace(starring);
@@ -146,7 +152,7 @@ impl TeleplayParse for ZBKYYYParser {
             .value().as_text().ok_or_else(|| Error::ParseError("Failed to find plot".to_string()))?
             .to_string());
 
-        println!("info:\n{}", _teleplay_info);
+        println!("{}", _teleplay_info);
         let mut sources: Vec<Vec<EpisodeInfo>> = Vec::new();
         let srcs_selector = Selector::parse("div.v_con_box ul")?;
         let uri_selector = Selector::parse("li a")?;
