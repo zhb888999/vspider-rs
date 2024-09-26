@@ -22,21 +22,6 @@ impl IJUJITVParser {
             },
         })
     }
-
-    #[allow(unused)]
-    fn parse_info(&self, html: &Html) -> HashMap<String, String> {
-        let info_selector = Selector::parse("div.tv-bd p:has(b)").unwrap();
-        let infos = html.select(&info_selector);
-        let mut info_dict: HashMap<String, String> = HashMap::new();
-        for info in infos {
-            let texts = info.text().collect::<Vec<_>>();
-            if texts.len() < 2 { continue; }
-            let key = texts[0].trim().split("：").collect::<Vec<_>>()[0].to_string();
-            let value = texts[1].trim().to_string();
-            info_dict.insert(key, value);
-        }
-        info_dict
-    }
 }
 
 impl GenerateInfo for IJUJITVParser {
@@ -85,8 +70,9 @@ impl ResourceParse for IJUJITVParser {
                            .ok_or_else(|| Error::ParseError("Failed to find director".to_string()))?
                            .inner_html()
                            .split(':')
+                           .skip(1)
                            .map(|v| v.trim().to_string())
-                           .collect::<Vec<_>>();
+                           .last();
             let mut info = TeleplayInfo::default();
             info.title = title
                 .ok_or_else(|| Error::ParseError("Failed to find title".to_string()))?
@@ -97,8 +83,13 @@ impl ResourceParse for IJUJITVParser {
             info.cover.replace(cover
                 .ok_or_else(|| Error::ParseError("Failed to find cover".to_string()))?
                 .to_string());
-            if starring.len() > 1 {
-                info.starring.replace(starring[1].split(',').map(|v| v.trim().to_string()).collect::<Vec<_>>());
+            if let Some(starring) = starring {
+                let names = starring.trim().split(',').map(|v| v.trim().to_string()).collect::<Vec<_>>();
+                if names.len() > 1 {
+                    info.starring.replace(names);
+                } else {
+                    info.starring.replace(names[0].trim().split(' ').map(|v| v.trim().to_string()).collect::<Vec<_>>());
+                }
             }
             info.status.replace(status.trim().to_string());
             println!("{}", info);
@@ -111,6 +102,46 @@ impl ResourceParse for IJUJITVParser {
 impl TeleplayParse for IJUJITVParser {
     async fn parse(&self, html: &str, _teleplay_info: &mut TeleplayInfo, _requestor: Arc<impl Request>) -> Result<Vec<Vec<EpisodeInfo>>, Error> {
         let html = Html::parse_document(&html);
+
+        let detail_selector = Selector::parse("div.albumDetailMain-right")?;
+        let times_selector = Selector::parse("div.intro.clearfix p:nth-child(2) a")?;
+        let lanaguage_selector = Selector::parse("div.intro.clearfix p:nth-child(3)")?;
+        let director_selector = Selector::parse("div.intro.clearfix p:nth-child(4) a")?;
+        let update_selector = Selector::parse("div.intro.clearfix p:nth-child(6)")?;
+        let introduction_selector = Selector::parse("p.intro-desc.item-desc-info")?;
+
+        let detail = html.select(&detail_selector)
+            .next()
+            .ok_or_else(|| Error::ParseError("Failed to find detail".to_string()))?;
+        
+        let times = detail.select(&times_selector)
+            .next().ok_or_else(|| Error::ParseError("Failed to find times".to_string()))?
+           .inner_html();
+        _teleplay_info.times.replace(times.trim().to_string());
+        let language = detail.select(&lanaguage_selector)
+            .next().ok_or_else(|| Error::ParseError("Failed to find language".to_string()))?
+            .last_child().ok_or_else(|| Error::ParseError("Failed to find language".to_string()))?
+            .value().as_text().ok_or_else(|| Error::ParseError("Failed to find language".to_string()))?
+            .to_string();
+        _teleplay_info.language.replace(language.trim().to_string());
+        _teleplay_info.director.replace(detail.select(&director_selector)
+            .map(|v| v.inner_html().trim().to_string())
+            .collect());
+        let update = detail.select(&update_selector)
+            .next().ok_or_else(|| Error::ParseError("Failed to find update".to_string()))?
+            .last_child().ok_or_else(|| Error::ParseError("Failed to find update".to_string()))?
+            .value().as_text().ok_or_else(|| Error::ParseError("Failed to find update".to_string()))?
+            .trim().to_string();
+        _teleplay_info.update_time.replace(update);
+        let introduction = detail.select(&introduction_selector)
+            .next().ok_or_else(|| Error::ParseError("Failed to find introduction".to_string()))?
+            .last_child().ok_or_else(|| Error::ParseError("Failed to find introduction".to_string()))?
+            .value().as_text().ok_or_else(|| Error::ParseError("Failed to find introduction".to_string()))?
+            .trim().to_string();
+        _teleplay_info.introduction.replace(introduction);
+
+        println!("{:#?}\n", _teleplay_info);
+
         let mut sources: Vec<Vec<EpisodeInfo>> = Vec::new();
         let srcs_selector = Selector::parse("div.tab-content.stui-pannel_bd.col-pd.clearfix ul")?;
         let uri_selector = Selector::parse("li a")?;
@@ -127,6 +158,7 @@ impl TeleplayParse for IJUJITVParser {
                 }
                 let mut info = EpisodeInfo::default();
                 info.url = href.to_string();
+                info.name = url.inner_html().trim().to_string();
                 source.push(info); 
             }
             sources.push(source);
