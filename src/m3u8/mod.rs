@@ -19,7 +19,7 @@ pub enum DownloadError {
     #[error("url invailable")]
     URI,
     #[error("download incomplete")]
-    Incomplete
+    Incomplete,
 }
 
 struct Segment {
@@ -60,7 +60,10 @@ impl M3U8Download {
         timeout: u64,
     ) -> Result<(), DownloadError> {
         let mut file = File::create(save_file).await?;
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder()
+            .danger_accept_invalid_certs(true)
+            .build()
+            .unwrap();
         let request = client.get(ts_uri);
         let request = if timeout > 0 {
             request.timeout(std::time::Duration::from_secs(timeout))
@@ -100,14 +103,22 @@ impl M3U8Download {
         base_url: &Url,
     ) -> Result<(), DownloadError> {
         let url = base_url.join(playlist.variants[0].uri.as_str())?;
-        let body = reqwest::get(url.as_str()).await?.bytes().await?;
+        let client = reqwest::Client::builder()
+            .danger_accept_invalid_certs(true)
+            .build()
+            .unwrap();
+        let body = client.get(url.as_str()).send().await?.bytes().await?;
         let (_i, playlist) =
             m3u8_rs::parse_media_playlist(&body).map_err(|_| DownloadError::URI)?;
         self.parse_media_playlist(playlist, &url)
     }
 
     async fn parse_playlist(&mut self, base_url: &Url) -> Result<(), DownloadError> {
-        let body = reqwest::get(base_url.as_str()).await?.bytes().await?;
+        let client = reqwest::Client::builder()
+            .danger_accept_invalid_certs(true)
+            .build()
+            .unwrap();
+        let body = client.get(base_url.as_str()).send().await?.bytes().await?;
         match m3u8_rs::parse_playlist(&body) {
             Result::Ok((_i, Playlist::MasterPlaylist(playlist))) => {
                 self.parse_master_playlist(playlist, base_url).await
@@ -195,14 +206,21 @@ impl M3U8Download {
         if self.pbar.is_none() {
             self.pbar = Some(self.default_pbar());
         } else {
-            self.pbar.as_mut().unwrap().set_length(self.segments.len() as u64);
+            self.pbar
+                .as_mut()
+                .unwrap()
+                .set_length(self.segments.len() as u64);
         }
 
         let mut tasks = JoinSet::new();
 
         for (index, segment) in self.segments.iter_mut().enumerate() {
             let meta = std::fs::metadata(&segment.save_file);
-            let exists = if let Ok(meta) = meta { meta.len() > 0 } else { false };
+            let exists = if let Ok(meta) = meta {
+                meta.len() > 0
+            } else {
+                false
+            };
             if !exists || self.ignore_cache {
                 let (uri, file, timeout) =
                     (segment.uri.clone(), segment.save_file.clone(), self.timeout);
@@ -237,7 +255,10 @@ impl M3U8Download {
                         });
                         segment.try_count += 1;
                     } else {
-                        error!("not download @ {} try_count={} uri={}", index, self.try_count, segment.uri);
+                        error!(
+                            "not download @ {} try_count={} uri={}",
+                            index, self.try_count, segment.uri
+                        );
                     }
                 } else {
                     info!(
@@ -355,11 +376,11 @@ impl M3U8DownloadBuilder {
     }
 }
 
-
 #[tokio::test()]
 async fn test_download() {
     let mut builder = M3U8DownloadBuilder::new();
-    builder.uri("https://svip.high25-playback.com/20240922/7211_a45727d7/index.m3u8")
+    builder
+        .uri("https://svip.high25-playback.com/20240922/7211_a45727d7/index.m3u8")
         .save_file("第08集.mp4")
         // .try_count(3)
         .timeout(5)
@@ -370,44 +391,146 @@ async fn test_download() {
 
 #[tokio::test()]
 async fn test_download_map() -> Result<(), DownloadError> {
-    use std::collections::HashMap;
     use indicatif::MultiProgress;
+    use std::collections::HashMap;
 
     let videos: HashMap<&str, &str> = [
-        ("第01集", "https://v.cdnlz2.com/20240409/29677_3f005fc9/index.m3u8"),
-        ("第02集", "https://v.cdnlz2.com/20240409/29676_6e0be8f5/index.m3u8"),
-        ("第03集", "https://v.cdnlz2.com/20240409/29675_31710f23/index.m3u8"),
-        ("第04集", "https://v.cdnlz2.com/20240409/29674_bb521726/index.m3u8"),
-        ("第05集", "https://v.cdnlz2.com/20240410/29726_2a457c22/index.m3u8"),
-        ("第06集", "https://v.cdnlz2.com/20240410/29725_27347b37/index.m3u8"),
-        ("第07集", "https://v.cdnlz2.com/20240411/29782_320d1815/index.m3u8"),
-        ("第08集", "https://v.cdnlz2.com/20240411/29781_adebc99a/index.m3u8"),
-        ("第09集", "https://v.cdnlz2.com/20240412/29838_d2bbc097/index.m3u8"),
-        ("第10集", "https://v.cdnlz2.com/20240412/29837_8a2f86dc/index.m3u8"),
-        ("第11集", "https://v.cdnlz2.com/20240413/29903_2b0e7f2a/index.m3u8"),
-        ("第12集", "https://v.cdnlz2.com/20240413/29902_c21b5d65/index.m3u8"),
-        ("第13集", "https://v.cdnlz2.com/20240414/29932_e942b904/index.m3u8"),
-        ("第14集", "https://v.cdnlz2.com/20240414/29931_cc1baefb/index.m3u8"),
-        ("第15集", "https://v.cdnlz2.com/20240415/29979_204f0e8e/index.m3u8"),
-        ("第16集", "https://v.cdnlz2.com/20240415/29978_163ea09b/index.m3u8"),
-        ("第17集", "https://v.cdnlz2.com/20240416/29995_f50d90d6/index.m3u8"),
-        ("第18集", "https://v.cdnlz2.com/20240416/29994_e5576c71/index.m3u8"),
-        ("第19集", "https://v.cdnlz2.com/20240417/30037_6d56ac2f/index.m3u8"),
-        ("第20集", "https://v.cdnlz2.com/20240417/30038_f67bce37/index.m3u8"),
-        ("第21集", "https://v.cdnlz2.com/20240418/30088_a4fa7307/index.m3u8"),
-        ("第22集", "https://v.cdnlz2.com/20240418/30089_1c905630/index.m3u8"),
-        ("第23集", "https://v.cdnlz2.com/20240419/30216_ec1c3a3a/index.m3u8"),
-        ("第24集", "https://v.cdnlz2.com/20240419/30215_1aafce18/index.m3u8"),
-        ("第25集", "https://v.cdnlz2.com/20240420/30253_7b2358d6/index.m3u8"),
-        ("第26集", "https://v.cdnlz2.com/20240420/30252_43652b50/index.m3u8"),
-        ("第27集", "https://v.cdnlz2.com/20240421/30320_a7f11884/index.m3u8"),
-        ("第28集", "https://v.cdnlz2.com/20240421/30319_f36c7dd8/index.m3u8"),
-        ("第29集", "https://v.cdnlz2.com/20240422/30365_a882004d/index.m3u8"),
-        ("第30集", "https://v.cdnlz2.com/20240422/30364_e3f76fc7/index.m3u8"),
-        ("第31集", "https://v.cdnlz2.com/20240423/30421_80576d76/index.m3u8"),
-        ("第32集", "https://v.cdnlz2.com/20240423/30420_1923c90f/index.m3u8"),
-        ("第33集", "https://v.cdnlz2.com/20240424/30475_5085748b/index.m3u8"),
-    ].iter().cloned().collect();
+        (
+            "第01集",
+            "https://v.cdnlz2.com/20240409/29677_3f005fc9/index.m3u8",
+        ),
+        (
+            "第02集",
+            "https://v.cdnlz2.com/20240409/29676_6e0be8f5/index.m3u8",
+        ),
+        (
+            "第03集",
+            "https://v.cdnlz2.com/20240409/29675_31710f23/index.m3u8",
+        ),
+        (
+            "第04集",
+            "https://v.cdnlz2.com/20240409/29674_bb521726/index.m3u8",
+        ),
+        (
+            "第05集",
+            "https://v.cdnlz2.com/20240410/29726_2a457c22/index.m3u8",
+        ),
+        (
+            "第06集",
+            "https://v.cdnlz2.com/20240410/29725_27347b37/index.m3u8",
+        ),
+        (
+            "第07集",
+            "https://v.cdnlz2.com/20240411/29782_320d1815/index.m3u8",
+        ),
+        (
+            "第08集",
+            "https://v.cdnlz2.com/20240411/29781_adebc99a/index.m3u8",
+        ),
+        (
+            "第09集",
+            "https://v.cdnlz2.com/20240412/29838_d2bbc097/index.m3u8",
+        ),
+        (
+            "第10集",
+            "https://v.cdnlz2.com/20240412/29837_8a2f86dc/index.m3u8",
+        ),
+        (
+            "第11集",
+            "https://v.cdnlz2.com/20240413/29903_2b0e7f2a/index.m3u8",
+        ),
+        (
+            "第12集",
+            "https://v.cdnlz2.com/20240413/29902_c21b5d65/index.m3u8",
+        ),
+        (
+            "第13集",
+            "https://v.cdnlz2.com/20240414/29932_e942b904/index.m3u8",
+        ),
+        (
+            "第14集",
+            "https://v.cdnlz2.com/20240414/29931_cc1baefb/index.m3u8",
+        ),
+        (
+            "第15集",
+            "https://v.cdnlz2.com/20240415/29979_204f0e8e/index.m3u8",
+        ),
+        (
+            "第16集",
+            "https://v.cdnlz2.com/20240415/29978_163ea09b/index.m3u8",
+        ),
+        (
+            "第17集",
+            "https://v.cdnlz2.com/20240416/29995_f50d90d6/index.m3u8",
+        ),
+        (
+            "第18集",
+            "https://v.cdnlz2.com/20240416/29994_e5576c71/index.m3u8",
+        ),
+        (
+            "第19集",
+            "https://v.cdnlz2.com/20240417/30037_6d56ac2f/index.m3u8",
+        ),
+        (
+            "第20集",
+            "https://v.cdnlz2.com/20240417/30038_f67bce37/index.m3u8",
+        ),
+        (
+            "第21集",
+            "https://v.cdnlz2.com/20240418/30088_a4fa7307/index.m3u8",
+        ),
+        (
+            "第22集",
+            "https://v.cdnlz2.com/20240418/30089_1c905630/index.m3u8",
+        ),
+        (
+            "第23集",
+            "https://v.cdnlz2.com/20240419/30216_ec1c3a3a/index.m3u8",
+        ),
+        (
+            "第24集",
+            "https://v.cdnlz2.com/20240419/30215_1aafce18/index.m3u8",
+        ),
+        (
+            "第25集",
+            "https://v.cdnlz2.com/20240420/30253_7b2358d6/index.m3u8",
+        ),
+        (
+            "第26集",
+            "https://v.cdnlz2.com/20240420/30252_43652b50/index.m3u8",
+        ),
+        (
+            "第27集",
+            "https://v.cdnlz2.com/20240421/30320_a7f11884/index.m3u8",
+        ),
+        (
+            "第28集",
+            "https://v.cdnlz2.com/20240421/30319_f36c7dd8/index.m3u8",
+        ),
+        (
+            "第29集",
+            "https://v.cdnlz2.com/20240422/30365_a882004d/index.m3u8",
+        ),
+        (
+            "第30集",
+            "https://v.cdnlz2.com/20240422/30364_e3f76fc7/index.m3u8",
+        ),
+        (
+            "第31集",
+            "https://v.cdnlz2.com/20240423/30421_80576d76/index.m3u8",
+        ),
+        (
+            "第32集",
+            "https://v.cdnlz2.com/20240423/30420_1923c90f/index.m3u8",
+        ),
+        (
+            "第33集",
+            "https://v.cdnlz2.com/20240424/30475_5085748b/index.m3u8",
+        ),
+    ]
+    .iter()
+    .cloned()
+    .collect();
 
     let m = MultiProgress::new();
     let sty = ProgressStyle::with_template(
@@ -421,15 +544,15 @@ async fn test_download_map() -> Result<(), DownloadError> {
     std::fs::create_dir_all(dir).unwrap();
     let mut index = 1;
     let len: usize = videos.len();
-    for (key , value) in videos {
-        let save_file = format!("{}/{}.mp4",dir, key);
+    for (key, value) in videos {
+        let save_file = format!("{}/{}.mp4", dir, key);
 
         let pb = m.add(ProgressBar::hidden());
         pb.set_style(sty.clone());
         pb.set_message(save_file.clone());
         pb.set_prefix(format!("{}/{}", index, len));
         index += 1;
-        
+
         let mut downloader = builder
             .uri(value)
             .timeout(10)

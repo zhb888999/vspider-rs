@@ -1,7 +1,7 @@
 use super::super::error::Error;
 use super::super::{EpisodeInfo, ResourceInfo, TeleplayInfo, URIType, Uri};
 use super::super::{EpisodeParse, GenerateInfo, Request, ResourceParse, TeleplayParse};
-use scraper::{Html, Selector};
+use scraper::{ElementRef, Html, Selector};
 use serde_json::Value;
 use std::sync::Arc;
 
@@ -63,73 +63,63 @@ impl ResourceParse for ZBKYYYParser {
 
         let teleplays = html.select(&search_list_selector);
         for teleplay in teleplays {
-            let title = teleplay
+            let mut info = TeleplayInfo::default();
+            info.title = teleplay
                 .select(&title_selector)
                 .next()
                 .ok_or_else(|| Error::ParseError("Failed to find name".to_string()))?
                 .inner_html();
-            let home_page = teleplay
+            info.home_page = teleplay
                 .select(&home_page_selector)
                 .next()
                 .ok_or_else(|| Error::ParseError("Failed to find home page".to_string()))?
                 .value()
                 .attr("href")
-                .ok_or_else(|| Error::ParseError("Failed to find home page".to_string()))?;
-            let score = teleplay
-                .select(&score_selector)
-                .next()
-                .ok_or_else(|| Error::ParseError("Failed to find score".to_string()))?
-                .inner_html();
-            let introduction = teleplay
-                .select(&introduction_selector)
-                .next()
-                .ok_or_else(|| Error::ParseError("Failed to find introduction".to_string()))?
-                .inner_html();
-            let cover = teleplay
-                .select(&cover_selector)
-                .next()
-                .ok_or_else(|| Error::ParseError("Failed to find cover".to_string()))?
-                .value()
-                .attr("src")
-                .ok_or_else(|| Error::ParseError("Failed to find cover".to_string()))?;
-            let status = teleplay
-                .select(&status_selector)
-                .next()
-                .ok_or_else(|| Error::ParseError("Failed to find status".to_string()))?
-                .inner_html();
+                .ok_or_else(|| Error::ParseError("Failed to find home page".to_string()))?
+                .to_string();
+
+            if let Some(score) = teleplay.select(&score_selector).next() {
+                info.score.replace(score.inner_html());
+            }
+            if let Some(introduction) = teleplay.select(&introduction_selector).next() {
+                info.introduction.replace(introduction.inner_html());
+            }
+            if let Some(cover) = teleplay.select(&cover_selector).next() {
+                if let Some(cover) = cover.value().attr("src") {
+                    info.cover.replace(cover.to_string());
+                }
+            }
+            if let Some(status) = teleplay.select(&status_selector).next() {
+                info.status.replace(status.inner_html());
+            }
 
             let mut others = teleplay.select(&other_selector);
-            let li0 = others
-                .next()
-                .ok_or_else(|| Error::ParseError("Failed to find other info".to_string()))?;
-            let times_lang = li0
-                .select(&times_lang_selector)
-                .map(|v| v.inner_html())
-                .collect::<Vec<_>>();
-            let director = li0
-                .select(&name_selector)
-                .map(|v| v.inner_html())
-                .collect::<Vec<_>>();
-
-            let li1 = others
-                .next()
-                .ok_or_else(|| Error::ParseError("Failed to find other info".to_string()))?;
-            let starring = li1
-                .select(&name_selector)
-                .map(|v| v.inner_html())
-                .collect::<Vec<_>>();
-
-            let mut info = TeleplayInfo::default();
-            info.home_page = home_page.to_string();
-            info.title = title.to_string();
-            info.times.replace(times_lang[0].to_string());
-            info.language.replace(times_lang[1].to_string());
-            info.score.replace(score.to_string());
-            info.cover.replace(cover.to_string());
-            info.status.replace(status.to_string());
-            info.introduction.replace(introduction.to_string());
-            info.director.replace(director);
-            info.starring.replace(starring);
+            if let Some(li0) = others.next() {
+                let times_lang = li0
+                    .select(&times_lang_selector)
+                    .map(|v| v.inner_html())
+                    .collect::<Vec<_>>();
+                if times_lang.len() == 2 {
+                    info.times.replace(times_lang[0].to_string());
+                    info.language.replace(times_lang[1].to_string());
+                }
+                let director = li0
+                    .select(&name_selector)
+                    .map(|v| v.inner_html())
+                    .collect::<Vec<_>>();
+                if !director.is_empty() {
+                    info.director.replace(director);
+                }
+            }
+            if let Some(li1) = others.next() {
+                let starring = li1
+                    .select(&name_selector)
+                    .map(|v| v.inner_html())
+                    .collect::<Vec<_>>();
+                if !starring.is_empty() {
+                    info.starring.replace(starring);
+                }
+            }
             infos.push(info);
         }
         Ok(infos)
@@ -146,61 +136,38 @@ impl TeleplayParse for ZBKYYYParser {
         let html = Html::parse_document(&html);
         let update_selector =
             Selector::parse("div.txt_intro_con ul.txt_list.clearfix li:nth-child(2)")?;
-        _teleplay_info.update_time.replace(
-            html.select(&update_selector)
-                .next()
-                .ok_or_else(|| Error::ParseError("Failed to find update time".to_string()))?
-                .last_child()
-                .ok_or_else(|| Error::ParseError("Failed to find update time".to_string()))?
-                .value()
-                .as_text()
-                .ok_or_else(|| Error::ParseError("Failed to find update time".to_string()))?
-                .to_string(),
-        );
+
+        let element_parse = |element: ElementRef, selector| -> Option<String> {
+            Some(
+                element
+                    .select(selector)
+                    .next()?
+                    .last_child()?
+                    .value()
+                    .as_text()?
+                    .to_string(),
+            )
+        };
+
+        if let Some(update_time) = element_parse(html.root_element(), &update_selector) {
+            _teleplay_info.update_time.replace(update_time);
+        }
+
         let tv_bd_selector = Selector::parse("div.tv-bd")?;
-        let tv_bd = html.select(&tv_bd_selector).next().unwrap();
-
-        let region_selector = Selector::parse("p:nth-child(4)")?;
-        _teleplay_info.region.replace(
-            tv_bd
-                .select(&region_selector)
-                .next()
-                .ok_or_else(|| Error::ParseError("Failed to find region".to_string()))?
-                .last_child()
-                .ok_or_else(|| Error::ParseError("Failed to find region".to_string()))?
-                .value()
-                .as_text()
-                .ok_or_else(|| Error::ParseError("Failed to find region".to_string()))?
-                .to_string(),
-        );
-
-        let genre_selector = Selector::parse("p:nth-child(5)")?;
-        _teleplay_info.genre.replace(
-            tv_bd
-                .select(&genre_selector)
-                .next()
-                .ok_or_else(|| Error::ParseError("Failed to find genre".to_string()))?
-                .last_child()
-                .ok_or_else(|| Error::ParseError("Failed to find genre".to_string()))?
-                .value()
-                .as_text()
-                .ok_or_else(|| Error::ParseError("Failed to find genre".to_string()))?
-                .to_string(),
-        );
-
-        let plot_selector = Selector::parse("p:nth-child(15)")?;
-        _teleplay_info.plot.replace(
-            tv_bd
-                .select(&plot_selector)
-                .next()
-                .ok_or_else(|| Error::ParseError("Failed to find plot".to_string()))?
-                .last_child()
-                .ok_or_else(|| Error::ParseError("Failed to find plot".to_string()))?
-                .value()
-                .as_text()
-                .ok_or_else(|| Error::ParseError("Failed to find plot".to_string()))?
-                .to_string(),
-        );
+        if let Some(tv_bd) = html.select(&tv_bd_selector).next() {
+            let region_selector = Selector::parse("p:nth-child(4)")?;
+            if let Some(region) = element_parse(tv_bd, &region_selector) {
+                _teleplay_info.region.replace(region);
+            }
+            let genre_selector = Selector::parse("p:nth-child(5)")?;
+            if let Some(genre) = element_parse(tv_bd, &genre_selector) {
+                _teleplay_info.genre.replace(genre);
+            }
+            let plot_selector = Selector::parse("p:nth-child(15)")?;
+            if let Some(plot) = element_parse(tv_bd, &plot_selector) {
+                _teleplay_info.plot.replace(plot);
+            }
+        }
 
         println!("{}", _teleplay_info);
         let mut sources: Vec<Vec<EpisodeInfo>> = Vec::new();

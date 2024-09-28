@@ -1,10 +1,11 @@
-use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE, ACCEPT_ENCODING, ACCEPT_LANGUAGE, CONNECTION};
-use tokio::io::{AsyncReadExt, copy};
 use super::error::Error;
 use super::Request;
-use std::time::Duration;
+use reqwest::header::{
+    HeaderMap, HeaderValue, ACCEPT_ENCODING, ACCEPT_LANGUAGE, CONNECTION, CONTENT_TYPE,
+};
 use std::sync::Arc;
-
+use std::time::Duration;
+use tokio::io::{copy, AsyncReadExt};
 
 #[derive(Debug, Clone)]
 pub struct Requestor {
@@ -15,15 +16,16 @@ pub struct Requestor {
     client: reqwest::Client,
 }
 
-
 impl Requestor {
     async fn base_request(&self, url: &str) -> Result<String, Error> {
-        let response = self.client.clone()
-           .get(url)
-           .headers(self.headers.clone())
-           .timeout(std::time::Duration::from_secs(self.timeout))
-           .send()
-           .await?;
+        let response = self
+            .client
+            .clone()
+            .get(url)
+            .headers(self.headers.clone())
+            .timeout(std::time::Duration::from_secs(self.timeout))
+            .send()
+            .await?;
 
         if response.status().is_success() {
             let body = response.text().await?;
@@ -43,7 +45,7 @@ impl Requestor {
     }
 
     async fn write_cache(&self, path: &str, content: &str) -> Result<(), std::io::Error> {
-        let mut file = tokio::fs::File::create(path).await?;        
+        let mut file = tokio::fs::File::create(path).await?;
         copy(&mut content.as_bytes(), &mut file).await?;
         Ok(())
     }
@@ -63,7 +65,10 @@ impl Requestor {
             // println!("read cache success, path: {}", path);
             Ok(content)
         } else {
-            Err(std::io::Error::new(std::io::ErrorKind::NotFound, "cache not found"))
+            Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "cache not found",
+            ))
         }
     }
 
@@ -81,11 +86,10 @@ impl Requestor {
         }
         None
     }
-
 }
 
 impl Request for Requestor {
-   async fn request(&self, url: &str) -> Result<String, Error> {
+    async fn request(&self, url: &str) -> Result<String, Error> {
         let mut try_count = 0u64;
         while self.try_count == 0 || try_count < self.try_count {
             match self.base_request(url).await {
@@ -99,9 +103,9 @@ impl Request for Requestor {
             try_count += 1;
         }
         Err(Error::RequestOutOfTry(try_count))
-   } 
+    }
 
-   async fn request_with_cache(&self, url: &str, cache_time: Duration) -> Result<String, Error> {
+    async fn request_with_cache(&self, url: &str, cache_time: Duration) -> Result<String, Error> {
         let cache_path = self.get_cache_path(url);
         if let Some(time) = self.modifie_time(&cache_path).await {
             if time < cache_time {
@@ -118,7 +122,7 @@ impl Request for Requestor {
             println!("write cache error, url: {}, error: {}", url, e);
         }
         Ok(content)
-   }
+    }
 }
 
 pub struct RequestorBuilder {
@@ -145,16 +149,17 @@ impl Default for RequestorBuilder {
             ACCEPT_LANGUAGE,
             HeaderValue::from_static("zh-CN,zh;q=0.8,en;q=0.6"),
         );
-        headers.insert(
-            CONNECTION,
-            HeaderValue::from_static("keep-alive"),
-        );
+        headers.insert(CONNECTION, HeaderValue::from_static("keep-alive"));
+        let client = reqwest::Client::builder()
+            .danger_accept_invalid_certs(true)
+            .build()
+            .unwrap();
         Self {
             headers,
             cache_dir: String::from(".cache"),
             timeout: 30,
             try_count: 3,
-            client: reqwest::Client::new(),
+            client,
         }
     }
 }

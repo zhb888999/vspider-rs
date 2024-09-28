@@ -55,65 +55,56 @@ impl ResourceParse for IJUJITVParser {
         let status_selector = Selector::parse("a.thumb div.icon-br span.label")?;
         let starring_selector = Selector::parse("div.text p.des")?;
         for teleplay in teleplays {
+            let mut info = TeleplayInfo::default();
             let a = teleplay
                 .select(&a_selector)
                 .next()
                 .ok_or_else(|| Error::ParseError("Failed to find title".to_string()))?;
             let title = a.value().attr("title");
             let home_page = a.value().attr("href");
-            let cover = teleplay
-                .select(&img_selector)
-                .next()
-                .ok_or_else(|| Error::ParseError("Failed to find cover".to_string()))?
-                .value()
-                .attr("src");
-            let status = teleplay
-                .select(&status_selector)
-                .next()
-                .ok_or_else(|| Error::ParseError("Failed to find status".to_string()))?
-                .inner_html();
-            let starring = teleplay
-                .select(&starring_selector)
-                .next()
-                .ok_or_else(|| Error::ParseError("Failed to find director".to_string()))?
-                .inner_html()
-                .split(':')
-                .skip(1)
-                .map(|v| v.trim().to_string())
-                .last();
-            let mut info = TeleplayInfo::default();
             info.title = title
                 .ok_or_else(|| Error::ParseError("Failed to find title".to_string()))?
                 .to_string();
             info.home_page = home_page
                 .ok_or_else(|| Error::ParseError("Failed to find home page".to_string()))?
                 .to_string();
-            info.cover.replace(
-                cover
-                    .ok_or_else(|| Error::ParseError("Failed to find cover".to_string()))?
-                    .to_string(),
-            );
-            if let Some(starring) = starring {
-                let names = starring
-                    .trim()
-                    .split(',')
-                    .filter(|v| !v.is_empty())
-                    .map(|v| v.trim().to_string())
-                    .collect::<Vec<_>>();
-                if names.len() > 1 {
-                    info.starring.replace(names);
-                } else if names.len() == 1 {
-                    info.starring.replace(
-                        names[0]
-                            .trim()
-                            .split(' ')
-                            .filter(|v| !v.is_empty())
-                            .map(|v| v.trim().to_string())
-                            .collect::<Vec<_>>(),
-                    );
+            if let Some(cover) = teleplay.select(&img_selector).next() {
+                if let Some(cover) = cover.value().attr("src") {
+                    info.cover.replace(cover.to_string());
                 }
             }
-            info.status.replace(status.trim().to_string());
+            if let Some(status) = teleplay.select(&status_selector).next() {
+                info.status.replace(status.inner_html().trim().to_string());
+            }
+            if let Some(starring) = teleplay.select(&starring_selector).next() {
+                if let Some(starring) = starring
+                    .inner_html()
+                    .split(':')
+                    .skip(1)
+                    .map(|v| v.trim().to_string())
+                    .last()
+                {
+                    let names = starring
+                        .trim()
+                        .split(',')
+                        .filter(|v| !v.is_empty())
+                        .map(|v| v.trim().to_string())
+                        .collect::<Vec<_>>();
+                    if names.len() > 1 {
+                        info.starring.replace(names);
+                    } else if names.len() == 1 {
+                        info.starring.replace(
+                            names[0]
+                                .trim()
+                                .split(' ')
+                                .filter(|v| !v.is_empty())
+                                .map(|v| v.trim().to_string())
+                                .collect::<Vec<_>>(),
+                        );
+                    }
+                }
+            }
+
             println!("{}", info);
             infos.push(info);
         }
@@ -137,60 +128,45 @@ impl TeleplayParse for IJUJITVParser {
         let update_selector = Selector::parse("div.intro.clearfix p:nth-child(6)")?;
         let introduction_selector = Selector::parse("p.intro-desc.item-desc-info")?;
 
-        let detail = html
-            .select(&detail_selector)
-            .next()
-            .ok_or_else(|| Error::ParseError("Failed to find detail".to_string()))?;
-
-        let times = detail
-            .select(&times_selector)
-            .next()
-            .ok_or_else(|| Error::ParseError("Failed to find times".to_string()))?
-            .inner_html();
-        _teleplay_info.times.replace(times.trim().to_string());
-        let language = detail
-            .select(&lanaguage_selector)
-            .next()
-            .ok_or_else(|| Error::ParseError("Failed to find language".to_string()))?
-            .last_child()
-            .ok_or_else(|| Error::ParseError("Failed to find language".to_string()))?
-            .value()
-            .as_text()
-            .ok_or_else(|| Error::ParseError("Failed to find language".to_string()))?
-            .to_string();
-        _teleplay_info.language.replace(language.trim().to_string());
-
-        let director = detail
-            .select(&director_selector)
-            .map(|v| v.inner_html().trim().to_string())
-            .collect::<Vec<_>>();
-        if director.len() > 0 {
-            _teleplay_info.director.replace(director);
+        if let Some(detail) = html.select(&detail_selector).next() {
+            if let Some(times) = detail.select(&times_selector).next() {
+                _teleplay_info
+                    .times
+                    .replace(times.inner_html().trim().to_string());
+            }
+            if let Some(language) = detail.select(&lanaguage_selector).next() {
+                if let Some(language) = language.last_child() {
+                    if let Some(language) = language.value().as_text() {
+                        _teleplay_info.language.replace(language.trim().to_string());
+                    }
+                }
+            }
+            let director = detail
+                .select(&director_selector)
+                .map(|v| v.inner_html().trim().to_string())
+                .collect::<Vec<_>>();
+            if director.len() > 0 {
+                _teleplay_info.director.replace(director);
+            }
+            if let Some(update) = detail.select(&update_selector).next() {
+                if let Some(update) = update.last_child() {
+                    if let Some(update) = update.value().as_text() {
+                        _teleplay_info
+                            .update_time
+                            .replace(update.trim().to_string());
+                    }
+                }
+            }
+            if let Some(introduction) = detail.select(&introduction_selector).next() {
+                if let Some(introduction) = introduction.last_child() {
+                    if let Some(introduction) = introduction.value().as_text() {
+                        _teleplay_info
+                            .introduction
+                            .replace(introduction.trim().to_string());
+                    }
+                }
+            }
         }
-        let update = detail
-            .select(&update_selector)
-            .next()
-            .ok_or_else(|| Error::ParseError("Failed to find update".to_string()))?
-            .last_child()
-            .ok_or_else(|| Error::ParseError("Failed to find update".to_string()))?
-            .value()
-            .as_text()
-            .ok_or_else(|| Error::ParseError("Failed to find update".to_string()))?
-            .trim()
-            .to_string();
-        _teleplay_info.update_time.replace(update);
-        let introduction = detail
-            .select(&introduction_selector)
-            .next()
-            .ok_or_else(|| Error::ParseError("Failed to find introduction".to_string()))?
-            .last_child()
-            .ok_or_else(|| Error::ParseError("Failed to find introduction".to_string()))?
-            .value()
-            .as_text()
-            .ok_or_else(|| Error::ParseError("Failed to find introduction".to_string()))?
-            .trim()
-            .to_string();
-        _teleplay_info.introduction.replace(introduction);
 
         let mut sources: Vec<Vec<EpisodeInfo>> = Vec::new();
         let srcs_selector = Selector::parse("div.tab-content.stui-pannel_bd.col-pd.clearfix ul")?;
