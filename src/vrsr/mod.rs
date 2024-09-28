@@ -1,6 +1,4 @@
-use std::collections::hash_set::Intersection;
 use std::marker::PhantomData;
-use std::path::Display;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
@@ -198,7 +196,6 @@ impl std::fmt::Display for TeleplayInfo {
         };
         Ok(())
     }
-
 }
 
 pub trait TeleplayParse {
@@ -511,10 +508,21 @@ where
     )
 }
 
-pub fn create_teleplay<'a, R, P>(requestor: Arc<R>, parser: Arc<P>, title: &str, id: u64) -> GeneralTeleplay<R, P>
+#[allow(unused)]
+pub fn create_teleplay<'a, R, P>(
+    requestor: Arc<R>,
+    parser: Arc<P>,
+    title: &str,
+    id: u64,
+) -> GeneralTeleplay<R, P>
 where
     R: Request,
     P: GenerateInfo + TeleplayParse + EpisodeParse,
 {
-    GeneralTeleplay::new(parser.generate_teleplay_info(title, id), requestor.clone(), parser.clone(), parser.clone())
+    GeneralTeleplay::new(
+        parser.generate_teleplay_info(title, id),
+        requestor.clone(),
+        parser.clone(),
+        parser.clone(),
+    )
 }
