@@ -1,11 +1,16 @@
+mod args;
 mod m3u8;
+mod utils;
 mod vrsr;
+mod commands;
 
+use args::{Cli, Mode, Src};
+use clap::Parser;
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use m3u8::{DownloadError, M3U8DownloadBuilder};
 use std::collections::HashMap;
+use commands::{CommandError, search, download, m3u8_download};
 use vrsr::{EpisodeParse, GenerateInfo, ResourceParse, TeleplayParse};
-
-use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 
 async fn download_map(
     m3u8_map: &HashMap<String, String>,
@@ -39,9 +44,25 @@ async fn download_map(
 }
 
 #[tokio::main]
-async fn main() -> Result<(), DownloadError> {
+async fn main() -> Result<(), CommandError> {
     env_logger::init();
-    test_vrsr().await.unwrap();
+    let cli = Cli::parse();
+    if let Some(mode) = cli.mode {
+        match mode {
+            Mode::Search {keyword, src, all, nocache} => {
+                search(&keyword, src, all, nocache).await?;
+            },
+            Mode::Download {id, src, nocache} => {
+                println!("mode search: {} {:#?}", id, src);
+                download(id, src, nocache).await?;
+            }
+            Mode::M3U8 {url, output} => {
+                m3u8_download(&url, &output).await?;
+            }
+        }
+    }
+
+    // test_vrsr().await.unwrap();
     // test_vrsr_teleplay().await.unwrap();
     Ok(())
 }
@@ -53,11 +74,12 @@ async fn test_vrsr() -> Result<(), vrsr::error::Error> {
     use vrsr::{IJUJITVParser, RequestorBuilder, ZBKYYYParser};
 
     let requestor = RequestorBuilder::new().build();
-    let parser = ZBKYYYParser::new();
-    // let parser = IJUJITVParser::new();
+    let parser0 = ZBKYYYParser::new();
+    let parser1 = IJUJITVParser::new();
 
-    let mut resource = create_resource(requestor, parser);
-    let teleplays = resource.search("探索新境").await?;
+    let mut resource0 = create_resource(requestor.clone(), parser0);
+    let mut _resource1 = create_resource(requestor.clone(), parser1);
+    let teleplays = resource0.search("探索新境").await?;
 
     for teleplay in teleplays.iter() {
         let mut teleplay_locked = teleplay.lock().await;

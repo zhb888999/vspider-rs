@@ -68,6 +68,16 @@ impl ResourceParse for IJUJITVParser {
             info.home_page = home_page
                 .ok_or_else(|| Error::ParseError("Failed to find home page".to_string()))?
                 .to_string();
+            info.id = info
+                .home_page
+                .split('/')
+                .last()
+                .unwrap()
+                .split('.')
+                .take(1)
+                .map(|v| v.parse::<u64>().unwrap())
+                .last()
+                .unwrap();
             if let Some(cover) = teleplay.select(&img_selector).next() {
                 if let Some(cover) = cover.value().attr("src") {
                     info.cover.replace(cover.to_string());
@@ -105,7 +115,6 @@ impl ResourceParse for IJUJITVParser {
                 }
             }
 
-            println!("{}", info);
             infos.push(info);
         }
         Ok(infos)

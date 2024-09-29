@@ -44,11 +44,11 @@ impl Segment {
 pub struct M3U8Download {
     uri: String,
     save_file: String,
-    tmp_dir: String,
+    cache_dir: String,
     segments: Vec<Segment>,
     try_count: i64,
     timeout: u64,
-    tmp_file: Option<String>,
+    cache_file: Option<String>,
     ignore_cache: bool,
     pbar: Option<ProgressBar>,
 }
@@ -76,7 +76,7 @@ impl M3U8Download {
     }
 
     fn join_path(&self, file: &str) -> String {
-        std::path::Path::new(&self.tmp_dir)
+        std::path::Path::new(&self.cache_dir)
             .join(file)
             .to_str()
             .unwrap()
@@ -140,9 +140,9 @@ impl M3U8Download {
         Ok(())
     }
 
-    fn convert2mp4(&self, tmp_file: &str) -> Result<(), DownloadError> {
+    fn convert2mp4(&self, cache_file: &str) -> Result<(), DownloadError> {
         let mut cmd = std::process::Command::new("ffmpeg");
-        cmd.arg("-i").arg(tmp_file);
+        cmd.arg("-i").arg(cache_file);
         cmd.arg("-c").arg("copy");
         cmd.arg(self.save_file.as_str());
         let output = cmd.output().expect("failed to execute process");
@@ -163,12 +163,12 @@ impl M3U8Download {
         if let Some(extension) = extension {
             if let Some(extension) = extension.to_str() {
                 let hash_name = sha256::digest(&self.uri);
-                let tmp_file = self.join_path(&hash_name);
+                let cache_file = self.join_path(&hash_name);
                 match extension {
                     "mp4" => {
-                        self.combine_files(&tmp_file).await?;
-                        self.convert2mp4(&tmp_file)?;
-                        self.tmp_file.replace(tmp_file);
+                        self.combine_files(&cache_file).await?;
+                        self.convert2mp4(&cache_file)?;
+                        self.cache_file.replace(cache_file);
                         return Ok(());
                     }
                     _ => return self.combine_files(&self.save_file).await,
@@ -199,7 +199,7 @@ impl M3U8Download {
     }
 
     pub async fn download(&mut self) -> Result<(), DownloadError> {
-        std::fs::create_dir_all(&self.tmp_dir)?;
+        std::fs::create_dir_all(&self.cache_dir)?;
         let url = Url::parse(self.uri.as_str())?;
         self.parse_playlist(&url).await?;
 
@@ -291,9 +291,9 @@ impl Drop for M3U8Download {
                 }
             }
         }
-        if let Some(tmp_file) = self.tmp_file.as_ref() {
-            if let Err(e) = std::fs::remove_file(tmp_file) {
-                warn!("remove tmp file {} err={}", tmp_file, e);
+        if let Some(cache_file) = self.cache_file.as_ref() {
+            if let Err(e) = std::fs::remove_file(cache_file) {
+                warn!("remove tmp file {} err={}", cache_file, e);
             }
         }
     }
@@ -302,7 +302,7 @@ impl Drop for M3U8Download {
 pub struct M3U8DownloadBuilder {
     uri: String,
     save_file: String,
-    tmp_dir: String,
+    cache_dir: String,
     try_count: i64,
     timeout: u64,
     ignore_cache: bool,
@@ -314,7 +314,7 @@ impl M3U8DownloadBuilder {
         Self {
             uri: String::from(""),
             save_file: String::from(""),
-            tmp_dir: String::from(".tmp"),
+            cache_dir: String::from(".cache"),
             try_count: -1,
             timeout: 0,
             ignore_cache: false,
@@ -328,8 +328,8 @@ impl M3U8DownloadBuilder {
     }
 
     #[allow(unused)]
-    pub fn tmp_dir<T: Into<String>>(&mut self, dir: T) -> &mut Self {
-        self.tmp_dir = dir.into();
+    pub fn cache_dir<T: Into<String>>(&mut self, dir: T) -> &mut Self {
+        self.cache_dir = dir.into();
         self
     }
 
@@ -365,12 +365,12 @@ impl M3U8DownloadBuilder {
         M3U8Download {
             uri: self.uri.clone(),
             save_file: self.save_file.clone(),
-            tmp_dir: self.tmp_dir.clone(),
+            cache_dir: self.cache_dir.clone(),
             segments: Vec::new(),
             try_count: self.try_count,
             timeout: self.timeout,
             ignore_cache: self.ignore_cache,
-            tmp_file: None,
+            cache_file: None,
             pbar: self.pbar.take(),
         }
     }
@@ -396,136 +396,12 @@ async fn test_download_map() -> Result<(), DownloadError> {
 
     let videos: HashMap<&str, &str> = [
         (
-            "第01集",
-            "https://v.cdnlz2.com/20240409/29677_3f005fc9/index.m3u8",
-        ),
-        (
-            "第02集",
-            "https://v.cdnlz2.com/20240409/29676_6e0be8f5/index.m3u8",
-        ),
-        (
-            "第03集",
-            "https://v.cdnlz2.com/20240409/29675_31710f23/index.m3u8",
-        ),
-        (
-            "第04集",
-            "https://v.cdnlz2.com/20240409/29674_bb521726/index.m3u8",
-        ),
-        (
-            "第05集",
-            "https://v.cdnlz2.com/20240410/29726_2a457c22/index.m3u8",
-        ),
-        (
-            "第06集",
-            "https://v.cdnlz2.com/20240410/29725_27347b37/index.m3u8",
-        ),
-        (
-            "第07集",
-            "https://v.cdnlz2.com/20240411/29782_320d1815/index.m3u8",
-        ),
-        (
-            "第08集",
-            "https://v.cdnlz2.com/20240411/29781_adebc99a/index.m3u8",
-        ),
-        (
             "第09集",
-            "https://v.cdnlz2.com/20240412/29838_d2bbc097/index.m3u8",
+            "https://svip.high25-playback.com/20240928/8035_8dc312dd/index.m3u8",
         ),
         (
             "第10集",
-            "https://v.cdnlz2.com/20240412/29837_8a2f86dc/index.m3u8",
-        ),
-        (
-            "第11集",
-            "https://v.cdnlz2.com/20240413/29903_2b0e7f2a/index.m3u8",
-        ),
-        (
-            "第12集",
-            "https://v.cdnlz2.com/20240413/29902_c21b5d65/index.m3u8",
-        ),
-        (
-            "第13集",
-            "https://v.cdnlz2.com/20240414/29932_e942b904/index.m3u8",
-        ),
-        (
-            "第14集",
-            "https://v.cdnlz2.com/20240414/29931_cc1baefb/index.m3u8",
-        ),
-        (
-            "第15集",
-            "https://v.cdnlz2.com/20240415/29979_204f0e8e/index.m3u8",
-        ),
-        (
-            "第16集",
-            "https://v.cdnlz2.com/20240415/29978_163ea09b/index.m3u8",
-        ),
-        (
-            "第17集",
-            "https://v.cdnlz2.com/20240416/29995_f50d90d6/index.m3u8",
-        ),
-        (
-            "第18集",
-            "https://v.cdnlz2.com/20240416/29994_e5576c71/index.m3u8",
-        ),
-        (
-            "第19集",
-            "https://v.cdnlz2.com/20240417/30037_6d56ac2f/index.m3u8",
-        ),
-        (
-            "第20集",
-            "https://v.cdnlz2.com/20240417/30038_f67bce37/index.m3u8",
-        ),
-        (
-            "第21集",
-            "https://v.cdnlz2.com/20240418/30088_a4fa7307/index.m3u8",
-        ),
-        (
-            "第22集",
-            "https://v.cdnlz2.com/20240418/30089_1c905630/index.m3u8",
-        ),
-        (
-            "第23集",
-            "https://v.cdnlz2.com/20240419/30216_ec1c3a3a/index.m3u8",
-        ),
-        (
-            "第24集",
-            "https://v.cdnlz2.com/20240419/30215_1aafce18/index.m3u8",
-        ),
-        (
-            "第25集",
-            "https://v.cdnlz2.com/20240420/30253_7b2358d6/index.m3u8",
-        ),
-        (
-            "第26集",
-            "https://v.cdnlz2.com/20240420/30252_43652b50/index.m3u8",
-        ),
-        (
-            "第27集",
-            "https://v.cdnlz2.com/20240421/30320_a7f11884/index.m3u8",
-        ),
-        (
-            "第28集",
-            "https://v.cdnlz2.com/20240421/30319_f36c7dd8/index.m3u8",
-        ),
-        (
-            "第29集",
-            "https://v.cdnlz2.com/20240422/30365_a882004d/index.m3u8",
-        ),
-        (
-            "第30集",
-            "https://v.cdnlz2.com/20240422/30364_e3f76fc7/index.m3u8",
-        ),
-        (
-            "第31集",
-            "https://v.cdnlz2.com/20240423/30421_80576d76/index.m3u8",
-        ),
-        (
-            "第32集",
-            "https://v.cdnlz2.com/20240423/30420_1923c90f/index.m3u8",
-        ),
-        (
-            "第33集",
-            "https://v.cdnlz2.com/20240424/30475_5085748b/index.m3u8",
+            "https://svip.high25-playback.com/20240929/8117_a75b9603/index.m3u8",
         ),
     ]
     .iter()

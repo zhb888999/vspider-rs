@@ -10,16 +10,22 @@ pub struct ZBKYYYParser {
     info: ResourceInfo,
 }
 
-impl ZBKYYYParser {
-    pub fn new() -> Arc<Self> {
-        Arc::new(Self {
+impl Default for ZBKYYYParser {
+    fn default() -> Self {
+        Self {
             info: ResourceInfo {
                 name: "真不卡影院".to_string(),
                 host: "https://www.zbkyyy.com".to_string(),
                 search_path: "qyvodsearch/-------------.html".to_string(),
                 search_key: "wd".to_string(),
             },
-        })
+        }
+    }
+}
+
+impl ZBKYYYParser {
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self::default())
     }
 }
 
@@ -77,7 +83,16 @@ impl ResourceParse for ZBKYYYParser {
                 .attr("href")
                 .ok_or_else(|| Error::ParseError("Failed to find home page".to_string()))?
                 .to_string();
-
+            info.id = info
+                .home_page
+                .split('/')
+                .last()
+                .unwrap()
+                .split('.')
+                .take(1)
+                .map(|v| v.parse::<u64>().unwrap())
+                .last()
+                .unwrap();
             if let Some(score) = teleplay.select(&score_selector).next() {
                 info.score.replace(score.inner_html());
             }
@@ -168,8 +183,6 @@ impl TeleplayParse for ZBKYYYParser {
                 _teleplay_info.plot.replace(plot);
             }
         }
-
-        println!("{}", _teleplay_info);
         let mut sources: Vec<Vec<EpisodeInfo>> = Vec::new();
         let srcs_selector = Selector::parse("div.v_con_box ul")?;
         let uri_selector = Selector::parse("li a")?;

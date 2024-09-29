@@ -7,7 +7,7 @@ use url::Url;
 
 pub mod error;
 mod parser;
-mod request;
+pub mod request;
 
 pub use self::parser::ijujitv::IJUJITVParser;
 pub use self::parser::zbkyyy::ZBKYYYParser;
@@ -134,6 +134,7 @@ where
 pub struct TeleplayInfo {
     pub title: String,
     pub home_page: String,
+    pub id: u64,
     pub release_time: Option<String>,
     pub language: Option<String>,
     pub times: Option<String>,
@@ -154,6 +155,7 @@ impl Default for TeleplayInfo {
         Self {
             title: String::new(),
             home_page: String::new(),
+            id: 0u64,
             release_time: None,
             language: None,
             times: None,
@@ -173,6 +175,7 @@ impl Default for TeleplayInfo {
 
 impl std::fmt::Display for TeleplayInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "|影片ID:{}\n", self.id)?;
         write!(f, "|影片名称:{}", self.title)?;
         if let Some(ref status) = self.status {
             write!(f, "[{}]\n", status)?;
@@ -192,7 +195,7 @@ impl std::fmt::Display for TeleplayInfo {
             write!(f, "|演员:{}\n", starring.join("/"))?;
         };
         if let Some(ref intersection) = self.introduction {
-            write!(f, "|简介:{}\n", intersection)?;
+            write!(f, "|简介:{}", intersection)?;
         };
         Ok(())
     }
@@ -233,6 +236,7 @@ where
     fn new(info: TeleplayInfo, requester: Arc<R>, parser: Arc<P>, eparser: Arc<EP>) -> Self;
     fn title(&self) -> &str;
     fn home_page(&self) -> &str;
+    fn id(&self) -> u64;
     fn release_time(&self) -> Option<&str>;
     fn language(&self) -> Option<&str>;
     fn times(&self) -> Option<&str>;
@@ -246,6 +250,7 @@ where
     fn plot(&self) -> Option<&str>;
     fn cover(&self) -> Option<&str>;
     fn status(&self) -> Option<&str>;
+    fn info(&self) -> &TeleplayInfo;
 
     fn episodes(&self) -> &Vec<Vec<Arc<Mutex<Self::EpisodeType>>>>;
     async fn request(
@@ -276,6 +281,9 @@ where
     }
     fn home_page(&self) -> &str {
         return self.info.home_page.as_str();
+    }
+    fn id(&self) -> u64 {
+        self.info.id
     }
     fn release_time(&self) -> Option<&str> {
         self.info.release_time.as_ref().map(|s| s.as_str())
@@ -315,6 +323,9 @@ where
     }
     fn status(&self) -> Option<&str> {
         self.info.status.as_ref().map(|s| s.as_str())
+    }
+    fn info(&self) -> &TeleplayInfo {
+        &self.info
     }
 
     fn episodes(&self) -> &Vec<Vec<Arc<Mutex<Self::EpisodeType>>>> {

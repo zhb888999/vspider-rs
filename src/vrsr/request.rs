@@ -14,6 +14,7 @@ pub struct Requestor {
     timeout: u64,
     try_count: u64,
     client: reqwest::Client,
+    ignore_cache: bool,
 }
 
 impl Requestor {
@@ -107,13 +108,15 @@ impl Request for Requestor {
 
     async fn request_with_cache(&self, url: &str, cache_time: Duration) -> Result<String, Error> {
         let cache_path = self.get_cache_path(url);
-        if let Some(time) = self.modifie_time(&cache_path).await {
-            if time < cache_time {
-                let cache = self.read_cache(&cache_path).await;
-                if let Ok(cache) = cache {
-                    return Ok(cache);
-                } else {
-                    println!("read cache error, request url: {}", url);
+        if !self.ignore_cache {
+            if  let Some(time) = self.modifie_time(&cache_path).await {
+                if time < cache_time {
+                    let cache = self.read_cache(&cache_path).await;
+                    if let Ok(cache) = cache {
+                        return Ok(cache);
+                    } else {
+                        println!("read cache error, request url: {}", url);
+                    }
                 }
             }
         }
@@ -131,6 +134,7 @@ pub struct RequestorBuilder {
     timeout: u64,
     try_count: u64,
     client: reqwest::Client,
+    ignore_cache: bool,
 }
 
 impl Default for RequestorBuilder {
@@ -160,6 +164,7 @@ impl Default for RequestorBuilder {
             timeout: 30,
             try_count: 3,
             client,
+            ignore_cache: false,
         }
     }
 }
@@ -193,6 +198,11 @@ impl RequestorBuilder {
         self
     }
 
+    pub fn ignore_cache(&mut self, ignore: bool) -> &mut Self {
+        self.ignore_cache = ignore;
+        self
+    }
+
     pub fn build(&self) -> Arc<Requestor> {
         Arc::new(Requestor {
             headers: self.headers.clone(),
@@ -200,6 +210,7 @@ impl RequestorBuilder {
             timeout: self.timeout,
             try_count: self.try_count,
             client: self.client.clone(),
+            ignore_cache: self.ignore_cache,
         })
     }
 }
