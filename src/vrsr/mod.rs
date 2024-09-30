@@ -387,7 +387,7 @@ impl Default for ResourceInfo {
 
 pub trait GenerateInfo {
     fn generate_resource_info(&self) -> ResourceInfo;
-    fn generate_teleplay_info(&self, title: &str, id: u64) -> TeleplayInfo;
+    fn generate_teleplay_info(&self, id: u64) -> TeleplayInfo;
 }
 
 #[derive(Debug, Clone)]
@@ -523,7 +523,6 @@ where
 pub fn create_teleplay<'a, R, P>(
     requestor: Arc<R>,
     parser: Arc<P>,
-    title: &str,
     id: u64,
 ) -> GeneralTeleplay<R, P>
 where
@@ -531,7 +530,7 @@ where
     P: GenerateInfo + TeleplayParse + EpisodeParse,
 {
     GeneralTeleplay::new(
-        parser.generate_teleplay_info(title, id),
+        parser.generate_teleplay_info(id),
         requestor.clone(),
         parser.clone(),
         parser.clone(),

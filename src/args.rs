@@ -24,8 +24,14 @@ pub enum Mode {
         id: u64,
         #[arg(short, long, default_value = "zbkyyy")]
         src: Src,
+        #[arg(short, long, default_value = "1")]
+        index: usize,
         #[arg(long)]
         nocache: bool,
+        #[arg(long)]
+        save_dir: Option<String>,
+        #[arg(short, long)]
+        print: bool,
     },
     /// Convert a video to M3U8 format
     M3U8 {

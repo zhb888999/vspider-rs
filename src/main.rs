@@ -52,9 +52,8 @@ async fn main() -> Result<(), CommandError> {
             Mode::Search {keyword, src, all, nocache} => {
                 search(&keyword, src, all, nocache).await?;
             },
-            Mode::Download {id, src, nocache} => {
-                println!("mode search: {} {:#?}", id, src);
-                download(id, src, nocache).await?;
+            Mode::Download {id, src, index, nocache, save_dir, print} => {
+                download(id, src, index, nocache, &save_dir, print).await?;
             }
             Mode::M3U8 {url, output} => {
                 m3u8_download(&url, &output).await?;
@@ -67,7 +66,7 @@ async fn main() -> Result<(), CommandError> {
     Ok(())
 }
 
-// #[tokio::test()]
+#[tokio::test()]
 async fn test_vrsr() -> Result<(), vrsr::error::Error> {
     use vrsr::create_resource;
     use vrsr::{Episode, Resource, Teleplay};
@@ -121,6 +120,7 @@ async fn test_vrsr() -> Result<(), vrsr::error::Error> {
     Ok(())
 }
 
+#[tokio::test()]
 async fn test_vrsr_teleplay() -> Result<(), vrsr::error::Error> {
     use vrsr::create_teleplay;
     use vrsr::{Episode, Teleplay};
@@ -131,15 +131,16 @@ async fn test_vrsr_teleplay() -> Result<(), vrsr::error::Error> {
     let parser = ZBKYYYParser::new();
     // let parser  = IJUJITVParser::new();
 
-    let mut teleplay = create_teleplay(requestor, parser, "探索新境", 96601);
+    let mut teleplay = create_teleplay(requestor, parser, 96601);
+    teleplay.request().await?;
     let title = teleplay.title().to_string();
+    let teleplay_sr = teleplay.episodes();
     let base_dir = std::path::Path::new(&title);
     std::fs::create_dir_all(base_dir)?;
-    let teleplay_sr = teleplay.request().await?;
     for result in teleplay_sr.iter() {
         let mut tasks = tokio::task::JoinSet::new();
         for episode in result.iter() {
-            let episode = episode.clone();
+            let episode: std::sync::Arc<tokio::sync::Mutex<vrsr::BaseEpisode<vrsr::request::Requestor, ZBKYYYParser>>> = episode.clone();
             tasks.spawn(async move { episode.lock().await.request().await });
         }
         tasks.join_all().await;

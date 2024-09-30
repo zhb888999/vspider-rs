@@ -204,6 +204,7 @@ impl RequestorBuilder {
     }
 
     pub fn build(&self) -> Arc<Requestor> {
+        std::fs::create_dir_all(&self.cache_dir).unwrap();
         Arc::new(Requestor {
             headers: self.headers.clone(),
             cache_dir: self.cache_dir.clone(),

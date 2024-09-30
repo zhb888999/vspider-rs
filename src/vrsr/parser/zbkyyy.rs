@@ -34,11 +34,10 @@ impl GenerateInfo for ZBKYYYParser {
         self.info.clone()
     }
 
-    fn generate_teleplay_info(&self, title: &str, id: u64) -> TeleplayInfo {
+    fn generate_teleplay_info(&self, id: u64) -> TeleplayInfo {
         let mut host_url = url::Url::parse(&self.info.host).unwrap();
         host_url.set_path(&format!("qyvoddetail/{}.html", id));
         TeleplayInfo {
-            title: title.to_string(),
             home_page: host_url.to_string(),
             ..TeleplayInfo::default()
         }
@@ -202,7 +201,6 @@ impl TeleplayParse for ZBKYYYParser {
                 source.push(info);
             }
             sources.push(source);
-            break;
         }
         Ok(sources)
     }

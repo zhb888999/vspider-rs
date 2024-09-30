@@ -1,13 +1,31 @@
 use crate::vrsr::error::Error as VRSRError;
 use crate::m3u8::{DownloadError, M3U8DownloadBuilder};
-use crate::vrsr::{create_resource, RequestorBuilder, Resource, Teleplay};
+use crate::vrsr::{create_resource, create_teleplay, Episode, GeneralTeleplay, RequestorBuilder, Resource, Teleplay};
 use crate::vrsr::request::Requestor;
+use crate::vrsr::{Request, GenerateInfo, ResourceParse, TeleplayParse, EpisodeParse};
 use crate::vrsr::ZBKYYYParser;
 use crate::vrsr::IJUJITVParser;
 use thiserror::Error;
 use crate::args::Src;
-use std::path;
+use std::{path, result};
 use std::sync::Arc;
+use crate::vrsr::GeneralResource;
+
+async fn search_resource<'a, R, P>(mut resource: GeneralResource<'a, R, P>, arg_value: &str, keyword: &str) -> Result<(), VRSRError> 
+where
+    R: Request,
+    P: GenerateInfo + ResourceParse + TeleplayParse + EpisodeParse,
+
+{
+    println!("@:{}[{}]", arg_value, resource.name().to_string());
+    let teleplays = resource.search(keyword).await?;
+    for teleplay in teleplays.iter() {
+        let teleplay_locked = teleplay.lock().await;
+        println!("{}", teleplay_locked.info());
+        println!("==============");
+    }
+    Ok(())
+}
 
 #[derive(Error, Debug)]
 pub enum CommandError {
@@ -17,52 +35,80 @@ pub enum CommandError {
     M3U8DownloadError(#[from] DownloadError),
 }
 
-pub async fn search_zbkyyy(requestor: Arc<Requestor>, keyword: &str) -> Result<(), CommandError> {
-    let parser = ZBKYYYParser::new();
-    let mut resource = create_resource(requestor.clone(), parser);
-    println!("@:zbkyyy[{}]", resource.name().to_string());
-    let teleplays = resource.search(keyword).await?;
-    for teleplay in teleplays.iter() {
-        let teleplay_locked = teleplay.lock().await;
-        println!("{}", teleplay_locked.info());
-        println!("==============");
-    }
-    Ok(())
-}
-
-pub async fn search_iujitv(requestor: Arc<Requestor>, keyword: &str) -> Result<(), CommandError> {
-    let parser = IJUJITVParser::new();
-    let mut resource = create_resource(requestor.clone(), parser);
-    println!("@:ijujitv[{}]", resource.name().to_string());
-    let teleplays = resource.search(keyword).await?;
-    for teleplay in teleplays.iter() {
-        let teleplay_locked = teleplay.lock().await;
-        println!("{}", teleplay_locked.info());
-        println!("==============");
-    }
-    Ok(())
-}
-
 pub async fn search(keyword: &str, src: Src, all: bool, nocache: bool) -> Result<(), CommandError> {
     let requestor = RequestorBuilder::new()
         .ignore_cache(nocache)
         .build();
-    if all {
-        search_zbkyyy(requestor.clone(), keyword).await?;
-        search_iujitv(requestor.clone(), keyword).await?;
+    if all {search_resource(create_resource(requestor.clone(), ZBKYYYParser::new()), "zbkyyy", keyword).await?;
+        search_resource(create_resource(requestor.clone(), IJUJITVParser::new()), "ijujitv", keyword).await?;
     } else {
         match src {
-            Src::ZBKYYY => search_zbkyyy(requestor, keyword).await?,
-            Src::IJUJITV => search_iujitv(requestor, keyword).await?,
+            Src::ZBKYYY => search_resource(create_resource(requestor.clone(), ZBKYYYParser::new()), "zbkyyy", keyword).await?,
+            Src::IJUJITV => search_resource(create_resource(requestor.clone(), IJUJITVParser::new()), "ijujitv", keyword).await?,
         }
     }
     Ok(())
 }
 
-pub async fn download(id: u64, src: Src, nocache: bool) -> Result<(), CommandError> {
+// async fn dwonload_teleplay<'a, R, P>(mut teleplay: GeneralTeleplay<R, P>, save_dir: String) -> Result<(), VRSRError> 
+// where
+//     R: Request,
+//     P: TeleplayParse + EpisodeParse,
+
+// {
+
+pub async fn download(id: u64, src: Src, index: usize, nocache: bool, save_dir:&Option<String>, print: bool) -> Result<(), CommandError> {
     let requestor = RequestorBuilder::new()
         .ignore_cache(nocache)
         .build();
+    let parser = ZBKYYYParser::new();
+    let mut teleplay = create_teleplay(requestor, parser, id);
+    teleplay.request().await?;
+    let save_path = if let Some(save_dir) = save_dir {
+        std::path::Path::new(save_dir)
+    } else {
+        std::path::Path::new(teleplay.title())
+    };
+    if !save_path.exists() {
+        std::fs::create_dir_all(save_path).unwrap();
+    }
+    let teleplay_sr = teleplay.episodes();
+
+    if print {
+        for (index, result) in teleplay_sr.iter().enumerate() {
+            println!("{} -> {}", index + 1, result.len());
+        }
+    } else {
+        if let Some(result) = teleplay_sr.get(index - 1) {
+            let mut tasks = tokio::task::JoinSet::new();
+            for episode in result.iter() {
+                let episode = episode.clone();
+                tasks.spawn(async move { 
+                    episode.lock().await.request().await
+                });
+            }
+            tasks.join_all().await;
+
+            let mut builder = M3U8DownloadBuilder::new();
+            for (index, episode) in result.iter().enumerate() {
+                let save_file = save_path.join(format!("第{:02}集.mp4", index + 1));
+                if std::path::Path::exists(&save_file) {
+                    continue;
+                }
+
+                let uri = episode.lock().await.uri();
+                let mut downloader = builder
+                    .uri(uri.uri)
+                    .timeout(3)
+                    .save_file(save_file.to_string_lossy())
+                    .build();
+                downloader.download().await.unwrap();
+            }
+        } else {
+            println!("No such episode");
+        }
+    }
+
     Ok(())
 }
 
