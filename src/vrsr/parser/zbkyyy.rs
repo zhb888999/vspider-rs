@@ -169,6 +169,12 @@ impl TeleplayParse for ZBKYYYParser {
 
         let tv_bd_selector = Selector::parse("div.tv-bd")?;
         if let Some(tv_bd) = html.select(&tv_bd_selector).next() {
+            let title_selector = Selector::parse("p:nth-child(1)")?;
+            if let Some(tilte) = element_parse(tv_bd, &title_selector) {
+                if _teleplay_info.title.is_empty() {
+                    _teleplay_info.title = tilte;
+                }
+            }
             let region_selector = Selector::parse("p:nth-child(4)")?;
             if let Some(region) = element_parse(tv_bd, &region_selector) {
                 _teleplay_info.region.replace(region);

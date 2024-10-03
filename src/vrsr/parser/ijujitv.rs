@@ -130,6 +130,7 @@ impl TeleplayParse for IJUJITVParser {
         let html = Html::parse_document(&html);
 
         let detail_selector = Selector::parse("div.albumDetailMain-right")?;
+        let title_selector = Selector::parse("h1.title")?;
         let times_selector = Selector::parse("div.intro.clearfix p:nth-child(2) a")?;
         let lanaguage_selector = Selector::parse("div.intro.clearfix p:nth-child(3)")?;
         let director_selector = Selector::parse("div.intro.clearfix p:nth-child(4) a")?;
@@ -137,6 +138,11 @@ impl TeleplayParse for IJUJITVParser {
         let introduction_selector = Selector::parse("p.intro-desc.item-desc-info")?;
 
         if let Some(detail) = html.select(&detail_selector).next() {
+            if let Some(title) = detail.select(&title_selector).next() {
+                if _teleplay_info.title.is_empty() {
+                    _teleplay_info.title = title.inner_html().trim().to_string();
+                }
+            }
             if let Some(times) = detail.select(&times_selector).next() {
                 _teleplay_info
                     .times
