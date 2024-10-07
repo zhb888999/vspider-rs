@@ -32,12 +32,16 @@ pub enum Mode {
         save_dir: Option<String>,
         #[arg(short, long)]
         print: bool,
+        #[arg(short, long, default_value = "32")]
+        climit: usize,
     },
     /// Convert a video to M3U8 format
     M3U8 {
         url: String,
         #[arg(short, long, default_value = "output.mp4")]
         output: String,
+        #[arg(short, long, value_parser = clap::value_parser!(u64).range(1..), default_value = "32")]
+        climit: usize,
     },
 }
 

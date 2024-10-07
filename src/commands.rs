@@ -47,7 +47,7 @@ pub async fn search(keyword: &str, src: Src, all: bool, nocache: bool) -> Result
     Ok(())
 }
 
-async fn dwonload_teleplay<'a, R, P>(mut teleplay: GeneralTeleplay<R, P>, index: usize, save_dir: &Option<String>, print: bool) -> Result<(), VRSRError> 
+async fn dwonload_teleplay<'a, R, P>(mut teleplay: GeneralTeleplay<R, P>, index: usize, save_dir: &Option<String>, print: bool, climit: usize) -> Result<(), VRSRError> 
 where
     R: Request,
     P: TeleplayParse + EpisodeParse,
@@ -84,6 +84,7 @@ where
                 let mut downloader = builder
                     .uri(uri.uri)
                     .timeout(3)
+                    .climit(climit)
                     .save_file(save_file.to_string_lossy())
                     .build();
                 downloader.download().await.unwrap();
@@ -97,14 +98,14 @@ where
 
 }
 
-pub async fn download(id: u64, src: Src, index: usize, nocache: bool, save_dir:&Option<String>, print: bool) -> Result<(), CommandError> {
+pub async fn download(id: u64, src: Src, index: usize, nocache: bool, save_dir:&Option<String>, print: bool, climit: usize) -> Result<(), CommandError> {
     let requestor = RequestorBuilder::new()
         .ignore_cache(nocache)
         .build();
 
     match src {
-        Src::ZBKYYY => dwonload_teleplay(create_teleplay(requestor, ZBKYYYParser::new(), id), index, save_dir, print).await?,
-        Src::IJUJITV => dwonload_teleplay(create_teleplay(requestor, IJUJITVParser::new(), id), index, save_dir, print).await?,
+        Src::ZBKYYY => dwonload_teleplay(create_teleplay(requestor, ZBKYYYParser::new(), id), index, save_dir, print, climit).await?,
+        Src::IJUJITV => dwonload_teleplay(create_teleplay(requestor, IJUJITVParser::new(), id), index, save_dir, print, climit).await?,
     };
     Ok(())
 }
@@ -165,7 +166,7 @@ pub async fn download2(id: u64, src: Src, index: usize, nocache: bool, save_dir:
     Ok(())
 }
 
-pub async fn m3u8_download(url: &str, output: &str) -> Result<(), CommandError> {
+pub async fn m3u8_download(url: &str, output: &str, climit: usize) -> Result<(), CommandError> {
     let path = std::path::Path::new(output);
     if let Some(parent) = path.parent() {
         if !parent.exists() {
@@ -177,6 +178,7 @@ pub async fn m3u8_download(url: &str, output: &str) -> Result<(), CommandError> 
         .uri(url)
         .save_file(output)
         .timeout(5)
+        .climit(climit)
         .ignore_cache(true);
     let mut downloader = builder.build();
     downloader.download().await.unwrap();

@@ -7,6 +7,8 @@ use tokio::fs::File;
 use tokio::io::copy;
 use tokio::task::JoinSet;
 use url::{ParseError, Url};
+use std::sync::Arc;
+use tokio::sync::Semaphore;
 
 #[derive(Error, Debug)]
 pub enum DownloadError {
@@ -51,6 +53,7 @@ pub struct M3U8Download {
     cache_file: Option<String>,
     ignore_cache: bool,
     pbar: Option<ProgressBar>,
+    climit: usize,
 }
 
 impl M3U8Download {
@@ -212,6 +215,7 @@ impl M3U8Download {
                 .set_length(self.segments.len() as u64);
         }
 
+        let semaphore = Arc::new(Semaphore::new(self.climit));
         let mut tasks = JoinSet::new();
 
         for (index, segment) in self.segments.iter_mut().enumerate() {
@@ -222,10 +226,14 @@ impl M3U8Download {
                 false
             };
             if !exists || self.ignore_cache {
+                let semaphore = semaphore.clone();
                 let (uri, file, timeout) =
                     (segment.uri.clone(), segment.save_file.clone(), self.timeout);
                 tasks.spawn(
-                    async move { (index, Self::download_segment(&uri, &file, timeout).await) },
+                    async move { 
+                        let _permit = semaphore.acquire().await.unwrap();
+                        (index, Self::download_segment(&uri, &file, timeout).await) 
+                    },
                 );
             } else {
                 info!("use cache file @ {} uri={}", index, segment.uri);
@@ -307,6 +315,7 @@ pub struct M3U8DownloadBuilder {
     timeout: u64,
     ignore_cache: bool,
     pbar: Option<ProgressBar>,
+    climit: usize,
 }
 
 impl M3U8DownloadBuilder {
@@ -319,6 +328,7 @@ impl M3U8DownloadBuilder {
             timeout: 0,
             ignore_cache: false,
             pbar: None,
+            climit: 32,
         }
     }
 
@@ -351,6 +361,12 @@ impl M3U8DownloadBuilder {
     }
 
     #[allow(unused)]
+    pub fn climit(&mut self, limit: usize) -> &mut Self {
+        self.climit = limit;
+        self
+    }
+
+    #[allow(unused)]
     pub fn ignore_cache(&mut self, ignore: bool) -> &mut Self {
         self.ignore_cache = ignore;
         self
@@ -372,6 +388,7 @@ impl M3U8DownloadBuilder {
             ignore_cache: self.ignore_cache,
             cache_file: None,
             pbar: self.pbar.take(),
+            climit: self.climit,
         }
     }
 }

@@ -21,11 +21,11 @@ async fn main() -> Result<(), CommandError> {
             Mode::Search {keyword, src, all, nocache} => {
                 search(&keyword, src, all, nocache).await?;
             },
-            Mode::Download {id, src, index, nocache, save_dir, print} => {
-                download(id, src, index, nocache, &save_dir, print).await?;
+            Mode::Download {id, src, index, nocache, save_dir, print, climit} => {
+                download(id, src, index, nocache, &save_dir, print, climit).await?;
             }
-            Mode::M3U8 {url, output} => {
-                m3u8_download(&url, &output).await?;
+            Mode::M3U8 {url, output, climit} => {
+                m3u8_download(&url, &output, climit).await?;
             }
         }
     }
