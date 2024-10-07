@@ -1,5 +1,5 @@
 use super::super::error::Error;
-use super::super::{EpisodeInfo, ResourceInfo, TeleplayInfo, URIType, Uri};
+use super::super::{EpisodeInfo, ResourceInfo, TeleplayInfo, TeleplaySrc, URIType, Uri};
 use super::super::{EpisodeParse, GenerateInfo, Request, ResourceParse, TeleplayParse};
 use scraper::{ElementRef, Html, Selector};
 use serde_json::Value;
@@ -146,7 +146,7 @@ impl TeleplayParse for ZBKYYYParser {
         html: &str,
         _teleplay_info: &mut TeleplayInfo,
         _requestor: Arc<impl Request>,
-    ) -> Result<Vec<Vec<EpisodeInfo>>, Error> {
+    ) -> Result<Vec<TeleplaySrc>, Error> {
         let html = Html::parse_document(&html);
         let update_selector =
             Selector::parse("div.txt_intro_con ul.txt_list.clearfix li:nth-child(2)")?;
@@ -188,23 +188,26 @@ impl TeleplayParse for ZBKYYYParser {
                 _teleplay_info.plot.replace(plot);
             }
         }
-        let mut sources: Vec<Vec<EpisodeInfo>> = Vec::new();
+        let mut sources: Vec<TeleplaySrc> = Vec::new();
+        let srcs_name_selector = Selector::parse("div.play_source_tab.clearfix a")?;
         let srcs_selector = Selector::parse("div.v_con_box ul")?;
         let uri_selector = Selector::parse("li a")?;
         let srcs = html.select(&srcs_selector);
-        for src in srcs {
-            let mut source: Vec<EpisodeInfo> = Vec::new();
+        let srcs_name = html.select(&srcs_name_selector);
+        for (src, name) in srcs.zip(srcs_name) {
+            let mut source: TeleplaySrc = TeleplaySrc::new();
+            source.set_name(name.inner_html().trim());
             let urls = src.select(&uri_selector);
             for url in urls {
                 let info = EpisodeInfo {
-                    name: url.inner_html(),
+                    name: url.inner_html().trim().to_string(),
                     url: url
                         .value()
                         .attr("href")
                         .ok_or_else(|| Error::ParseError("Failed to find episode url".to_string()))?
                         .to_string(),
                 };
-                source.push(info);
+                source.append_episode(info);
             }
             sources.push(source);
         }

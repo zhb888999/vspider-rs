@@ -1,5 +1,5 @@
 use super::super::error::Error;
-use super::super::{EpisodeInfo, ResourceInfo, TeleplayInfo, URIType, Uri};
+use super::super::{EpisodeInfo, ResourceInfo, TeleplayInfo, TeleplaySrc, URIType, Uri};
 use super::super::{EpisodeParse, GenerateInfo, Request, ResourceParse, TeleplayParse};
 use scraper::{Html, Selector};
 use serde_json::Value;
@@ -126,7 +126,7 @@ impl TeleplayParse for IJUJITVParser {
         html: &str,
         _teleplay_info: &mut TeleplayInfo,
         _requestor: Arc<impl Request>,
-    ) -> Result<Vec<Vec<EpisodeInfo>>, Error> {
+    ) -> Result<Vec<TeleplaySrc>, Error> {
         let html = Html::parse_document(&html);
 
         let detail_selector = Selector::parse("div.albumDetailMain-right")?;
@@ -182,12 +182,15 @@ impl TeleplayParse for IJUJITVParser {
             }
         }
 
-        let mut sources: Vec<Vec<EpisodeInfo>> = Vec::new();
+        let mut sources: Vec<TeleplaySrc> = Vec::new();
+        let srcs_name_selector = Selector::parse("div.mod-inner-head ul li a")?;
         let srcs_selector = Selector::parse("div.tab-content.stui-pannel_bd.col-pd.clearfix ul")?;
         let uri_selector = Selector::parse("li a")?;
         let srcs = html.select(&srcs_selector);
-        for src in srcs {
-            let mut source: Vec<EpisodeInfo> = Vec::new();
+        let srcs_name = html.select(&srcs_name_selector);
+        for (src, name) in srcs.zip(srcs_name) {
+            let mut source: TeleplaySrc = TeleplaySrc::new();
+            source.set_name(name.inner_html().trim());
             let urls = src.select(&uri_selector);
             for url in urls {
                 let href = url
@@ -200,7 +203,7 @@ impl TeleplayParse for IJUJITVParser {
                 let mut info = EpisodeInfo::default();
                 info.url = href.to_string();
                 info.name = url.inner_html().trim().to_string();
-                source.push(info);
+                source.append_episode(info);
             }
             sources.push(source);
             break;

@@ -63,16 +63,21 @@ where
     if !save_path.exists() {
         std::fs::create_dir_all(save_path)?;
     }
-    let teleplay_sr = teleplay.episodes();
+    let teleplay_src = teleplay.episodes();
 
     if print {
-        for (index, result) in teleplay_sr.iter().enumerate() {
-            println!("{} -> {}", index + 1, result.len());
+        for (index, result) in teleplay_src.iter().enumerate() {
+            println!("{} -> {}", index + 1, result.0.as_ref().unwrap_or(&"unknown".to_string()));
+            for episode in result.1.iter() {
+                let episode_locked = episode.lock().await;
+                print!("[{}]", episode_locked.name());
+            }
+            println!();
         }
     } else {
-        if let Some(result) = teleplay_sr.get(index - 1) {
+        if let Some(result) = teleplay_src.get(index - 1) {
             let mut builder = M3U8DownloadBuilder::new();
-            for (index, episode) in result.iter().enumerate() {
+            for (index, episode) in result.1.iter().enumerate() {
 
                 let mut episode_locked = episode.lock().await;
                 let uri = episode_locked.request().await?;
@@ -107,62 +112,6 @@ pub async fn download(id: u64, src: Src, index: usize, nocache: bool, save_dir:&
         Src::ZBKYYY => dwonload_teleplay(create_teleplay(requestor, ZBKYYYParser::new(), id), index, save_dir, print, climit).await?,
         Src::IJUJITV => dwonload_teleplay(create_teleplay(requestor, IJUJITVParser::new(), id), index, save_dir, print, climit).await?,
     };
-    Ok(())
-}
-
-#[allow(unused)]
-pub async fn download2(id: u64, src: Src, index: usize, nocache: bool, save_dir:&Option<String>, print: bool) -> Result<(), CommandError> {
-    let requestor = RequestorBuilder::new()
-        .ignore_cache(nocache)
-        .build();
-    let parser = ZBKYYYParser::new();
-    let mut teleplay = create_teleplay(requestor, parser, id);
-    teleplay.request().await?;
-    let save_path = if let Some(save_dir) = save_dir {
-        std::path::Path::new(save_dir)
-    } else {
-        std::path::Path::new(teleplay.title())
-    };
-    if !save_path.exists() {
-        std::fs::create_dir_all(save_path).unwrap();
-    }
-    let teleplay_sr = teleplay.episodes();
-
-    if print {
-        for (index, result) in teleplay_sr.iter().enumerate() {
-            println!("{} -> {}", index + 1, result.len());
-        }
-    } else {
-        if let Some(result) = teleplay_sr.get(index - 1) {
-            let mut tasks = tokio::task::JoinSet::new();
-            for episode in result.iter() {
-                let episode = episode.clone();
-                tasks.spawn(async move { 
-                    episode.lock().await.request().await
-                });
-            }
-            tasks.join_all().await;
-
-            let mut builder = M3U8DownloadBuilder::new();
-            for (index, episode) in result.iter().enumerate() {
-                let save_file = save_path.join(format!("第{:02}集.mp4", index + 1));
-                if std::path::Path::exists(&save_file) {
-                    continue;
-                }
-
-                let uri = episode.lock().await.uri();
-                let mut downloader = builder
-                    .uri(uri.uri)
-                    .timeout(3)
-                    .save_file(save_file.to_string_lossy())
-                    .build();
-                downloader.download().await.unwrap();
-            }
-        } else {
-            println!("No such episode");
-        }
-    }
-
     Ok(())
 }
 

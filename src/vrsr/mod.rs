@@ -201,13 +201,37 @@ impl std::fmt::Display for TeleplayInfo {
     }
 }
 
+pub struct TeleplaySrc {
+    pub name: Option<String>,
+    pub episodes: Vec<EpisodeInfo>,
+}
+
+impl TeleplaySrc {
+    fn new() -> Self {
+        Self {
+            name: None,
+            episodes: Vec::new(),
+        }
+    }
+
+    fn set_name(&mut self, name: &str) -> &mut Self {
+        self.name.replace(name.to_string());
+        return self;
+    }
+
+    fn append_episode(&mut self, episode: EpisodeInfo) -> &mut Self {
+        self.episodes.push(episode);
+        return self;
+    }
+}
+
 pub trait TeleplayParse {
     async fn parse(
         &self,
         html: &str,
         _teleplay_info: &mut TeleplayInfo,
         _requestor: Arc<impl Request>,
-    ) -> Result<Vec<Vec<EpisodeInfo>>, self::error::Error>;
+    ) -> Result<Vec<TeleplaySrc>, self::error::Error>;
 }
 
 #[derive(Debug, Clone)]
@@ -222,7 +246,7 @@ where
     requestor: Arc<R>,
     parser: Arc<P>,
     eparser: Arc<EP>,
-    episodes: Vec<Vec<Arc<Mutex<E>>>>,
+    episodes: Vec<(Option<String>, Vec<Arc<Mutex<E>>>)>,
 }
 
 #[allow(unused)]
@@ -252,10 +276,10 @@ where
     fn status(&self) -> Option<&str>;
     fn info(&self) -> &TeleplayInfo;
 
-    fn episodes(&self) -> &Vec<Vec<Arc<Mutex<Self::EpisodeType>>>>;
+    fn episodes(&self) -> &Vec<(Option<String>, Vec<Arc<Mutex<Self::EpisodeType>>>)>;
     async fn request(
         &'a mut self,
-    ) -> Result<&'a Vec<Vec<Arc<Mutex<Self::EpisodeType>>>>, self::error::Error>;
+    ) -> Result<&'a Vec<(Option<String>, Vec<Arc<Mutex<Self::EpisodeType>>>)>, self::error::Error>;
 }
 
 impl<'a, R, P, EP, T> Teleplay<'a, R, P, EP> for BaseTeleplay<R, P, EP, T>
@@ -328,31 +352,31 @@ where
         &self.info
     }
 
-    fn episodes(&self) -> &Vec<Vec<Arc<Mutex<Self::EpisodeType>>>> {
+    fn episodes(&self) -> &Vec<(Option<String>, Vec<Arc<Mutex<Self::EpisodeType>>>)> {
         return self.episodes.as_ref();
     }
 
     async fn request(
         &'a mut self,
-    ) -> Result<&'a Vec<Vec<Arc<Mutex<Self::EpisodeType>>>>, self::error::Error> {
+    ) -> Result<&'a Vec<(Option<String>, Vec<Arc<Mutex<Self::EpisodeType>>>)>, self::error::Error> {
         let response = self
             .requestor
             .request_with_cache(&self.info.home_page, Duration::new(24 * 60 * 60 * 30, 0))
             .await?;
         let mut hub_url = Url::parse(&self.info.home_page).unwrap();
-        let episodes_info = self
+        let teleplay_srcs = self
             .parser
             .parse(&response, &mut self.info, self.requestor.clone())
             .await?;
-        for episode_infos in episodes_info {
+        for teleplay_src in teleplay_srcs {
             let mut episodes_list = Vec::new();
-            for mut episode_info in episode_infos {
+            for mut episode_info in teleplay_src.episodes {
                 hub_url.set_path(&episode_info.url);
                 episode_info.url = hub_url.to_string();
                 let episode = T::new(episode_info, self.requestor.clone(), self.eparser.clone());
                 episodes_list.push(Arc::new(Mutex::new(episode)));
             }
-            self.episodes.push(episodes_list);
+            self.episodes.push((teleplay_src.name, episodes_list));
         }
         Ok(self.episodes.as_ref())
     }
