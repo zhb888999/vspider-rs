@@ -3,6 +3,7 @@ use super::Request;
 use reqwest::header::{
     HeaderMap, HeaderValue, ACCEPT_ENCODING, ACCEPT_LANGUAGE, CONNECTION, CONTENT_TYPE,
 };
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::{copy, AsyncReadExt};
@@ -100,6 +101,23 @@ impl Request for Requestor {
                         return Err(Error::ResponseFailed(status));
                     }
                 }
+            }
+            try_count += 1;
+        }
+        Err(Error::RequestOutOfTry(try_count))
+    }
+
+    async fn post_request(&self, url: &str, form_data: HashMap<String, String>) -> Result<String, Error> {
+        let mut try_count = 0u64;
+        while self.try_count == 0 || try_count < self.try_count {
+            let response = self.client.clone()
+               .post(url)
+               .form(&form_data)
+               .headers(self.headers.clone())
+               .send().await?;
+            if response.status().is_success() {
+                let body = response.text().await?;
+                return Ok(body);
             }
             try_count += 1;
         }

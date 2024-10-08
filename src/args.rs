@@ -49,4 +49,5 @@ pub enum Mode {
 pub enum Src {
     ZBKYYY,
     IJUJITV,
+    JUGOUGOU,
 }

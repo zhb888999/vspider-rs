@@ -4,6 +4,7 @@ use crate::vrsr::{create_resource, create_teleplay, Episode, GeneralTeleplay, Re
 use crate::vrsr::{Request, GenerateInfo, ResourceParse, TeleplayParse, EpisodeParse};
 use crate::vrsr::ZBKYYYParser;
 use crate::vrsr::IJUJITVParser;
+use crate::vrsr::JUGOUGOUParser;
 use thiserror::Error;
 use crate::args::Src;
 use crate::vrsr::GeneralResource;
@@ -38,10 +39,12 @@ pub async fn search(keyword: &str, src: Src, all: bool, nocache: bool) -> Result
         .build();
     if all {search_resource(create_resource(requestor.clone(), ZBKYYYParser::new()), "zbkyyy", keyword).await?;
         search_resource(create_resource(requestor.clone(), IJUJITVParser::new()), "ijujitv", keyword).await?;
+        search_resource(create_resource(requestor.clone(), JUGOUGOUParser::new()), "jugougou", keyword).await?;
     } else {
         match src {
             Src::ZBKYYY => search_resource(create_resource(requestor.clone(), ZBKYYYParser::new()), "zbkyyy", keyword).await?,
             Src::IJUJITV => search_resource(create_resource(requestor.clone(), IJUJITVParser::new()), "ijujitv", keyword).await?,
+            Src::JUGOUGOU => search_resource(create_resource(requestor.clone(), JUGOUGOUParser::new()), "jugougou", keyword).await?,
         }
     }
     Ok(())
@@ -111,6 +114,7 @@ pub async fn download(id: u64, src: Src, index: usize, nocache: bool, save_dir:&
     match src {
         Src::ZBKYYY => dwonload_teleplay(create_teleplay(requestor, ZBKYYYParser::new(), id), index, save_dir, print, climit).await?,
         Src::IJUJITV => dwonload_teleplay(create_teleplay(requestor, IJUJITVParser::new(), id), index, save_dir, print, climit).await?,
+        Src::JUGOUGOU => dwonload_teleplay(create_teleplay(requestor, JUGOUGOUParser::new(), id), index, save_dir, print, climit).await?,
     };
     Ok(())
 }

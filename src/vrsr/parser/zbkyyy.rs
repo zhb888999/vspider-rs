@@ -225,8 +225,9 @@ impl EpisodeParse for ZBKYYYParser {
             .ok_or_else(|| Error::ParseError("Failed to find m3u8 json msg".to_string()))?
             .inner_html()
             .split("=")
-            .last()
-            .ok_or_else(|| Error::ParseError("Failed to find m3u8 json msg".to_string()))?
+            .skip(1)
+            .collect::<Vec<_>>()
+            .join("")
             .trim()
             .to_string();
         let msg: Value = serde_json::from_str(&m3u8_json)?;

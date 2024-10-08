@@ -11,6 +11,7 @@ pub mod request;
 
 pub use self::parser::ijujitv::IJUJITVParser;
 pub use self::parser::zbkyyy::ZBKYYYParser;
+pub use self::parser::jugougou::JUGOUGOUParser;
 pub use self::request::RequestorBuilder;
 
 pub trait Request {
@@ -20,6 +21,7 @@ pub trait Request {
         url: &str,
         cache_time: Duration,
     ) -> Result<String, self::error::Error>;
+    async fn post_request(&self, url: &str, form_data: std::collections::HashMap<String, String>) -> Result<String, self::error::Error>;
 }
 
 #[allow(unused)]
