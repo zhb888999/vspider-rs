@@ -6,13 +6,11 @@ use std::sync::Arc;
 use headless_chrome::browser::tab::RequestInterceptor;
 use headless_chrome::protocol::cdp::Network::ResourceType;
 use headless_chrome::{Browser, LaunchOptions};
-// use std::error::Error;
 use std::sync::RwLock;
 use tokio::sync::Notify;
-// use std::ffi::{OsStr, OsString};
 
 struct MyInterceptor {
-    uri: Arc<RwLock<Option<String>>>,
+    uri: Arc<RwLock<Option<Uri>>>,
     tab: Arc<headless_chrome::browser::tab::Tab>,
     notify: Notify,
 }
@@ -26,7 +24,7 @@ impl MyInterceptor {
         }
     }
 
-    async fn get_uri(&self) -> String {
+    async fn get_uri(&self) -> Uri {
         self.notify.notified().await;
         return self.uri.read().unwrap().as_ref().unwrap().clone();
     }
@@ -39,8 +37,22 @@ impl RequestInterceptor for MyInterceptor {
         _session_id: headless_chrome::browser::transport::SessionId,
         event: headless_chrome::protocol::cdp::Fetch::events::RequestPausedEvent,
     ) -> headless_chrome::browser::tab::RequestPausedDecision  {
+        if self.uri.read().unwrap().is_some() {
+            return headless_chrome::browser::tab::RequestPausedDecision::Continue(None);
+        }
         if event.params.resource_Type == ResourceType::Xhr && event.params.request.url.ends_with(".m3u8") {
-            self.uri.write().unwrap().replace(event.params.request.url.clone());
+            self.uri.write().unwrap().replace(Uri {
+                uri: event.params.request.url.clone(),
+                utype: URIType::M3U8, 
+            });
+            let _ = self.tab.close(false);
+            self.notify.notify_one();
+        }
+        if event.params.resource_Type == ResourceType::Media {
+            self.uri.write().unwrap().replace(Uri {
+                uri: event.params.request.url.clone(),
+                utype: URIType::MP4, 
+            });
             let _ = self.tab.close(false);
             self.notify.notify_one();
         }
@@ -296,9 +308,6 @@ impl EpisodeParse for JUGOUGOUParser {
         tab.evaluate("redirectUrlToActive();", true).unwrap();
         tab.wait_for_element("div.MacPlayer").unwrap().click().unwrap();
         let uri = interceptor.get_uri().await;
-        Ok(Uri {
-            uri,
-            utype: URIType::M3U8,
-        })
+        Ok(uri)
     }
 }

@@ -1,13 +1,23 @@
 use crate::vrsr::error::Error as VRSRError;
 use crate::m3u8::{DownloadError, M3U8DownloadBuilder};
-use crate::vrsr::{create_resource, create_teleplay, Episode, GeneralTeleplay, RequestorBuilder, Resource, Teleplay};
+use crate::vrsr::{create_resource, create_teleplay, Episode, GeneralTeleplay, RequestorBuilder, Resource, Teleplay, URIType};
 use crate::vrsr::{Request, GenerateInfo, ResourceParse, TeleplayParse, EpisodeParse};
 use crate::vrsr::ZBKYYYParser;
 use crate::vrsr::IJUJITVParser;
 use crate::vrsr::JUGOUGOUParser;
+use bytes::Buf;
+use tokio::io::copy;
 use thiserror::Error;
 use crate::args::Src;
 use crate::vrsr::GeneralResource;
+
+async fn download_file(url: &str, save_path: &str) -> Result<(), VRSRError> {
+    let client = reqwest::Client::new();
+    let response = client.get(url).send().await?;
+    let mut file = tokio::fs::File::create(save_path).await?;
+    copy(&mut response.bytes().await?.chunk(), &mut file).await?;
+    Ok(())
+}
 
 async fn search_resource<'a, R, P>(mut resource: GeneralResource<'a, R, P>, arg_value: &str, keyword: &str) -> Result<(), VRSRError> 
 where
@@ -89,13 +99,24 @@ where
                 if std::path::Path::exists(&save_file) {
                     continue;
                 }
-                let mut downloader = builder
-                    .uri(uri.uri)
-                    .timeout(3)
-                    .climit(climit)
-                    .save_file(save_file.to_string_lossy())
-                    .build();
-                downloader.download().await.unwrap();
+                let save_file = save_file.to_string_lossy();
+                match uri.utype {
+                    URIType::M3U8 => {
+                        let mut downloader = builder
+                            .uri(uri.uri)
+                            .timeout(3)
+                            .climit(climit)
+                            .save_file(save_file)
+                            .build();
+                        downloader.download().await.unwrap();
+                    }
+                    URIType::MP4 => {
+                        download_file(&uri.uri,&save_file).await?;
+                    }
+                    _ => {
+                        println!("Unsupported URI type");
+                    }
+                }
             }
         } else {
             println!("No such episode");
