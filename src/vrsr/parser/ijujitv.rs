@@ -42,6 +42,7 @@ impl ResourceParse for IJUJITVParser {
     async fn parse(
         &self,
         html: &str,
+        _org_rul: &str,
         _requestor: Arc<impl Request>,
     ) -> Result<Vec<TeleplayInfo>, Error> {
         let html = Html::parse_document(&html);
@@ -124,6 +125,7 @@ impl TeleplayParse for IJUJITVParser {
     async fn parse(
         &self,
         html: &str,
+        _org_rul: &str,
         _teleplay_info: &mut TeleplayInfo,
         _requestor: Arc<impl Request>,
     ) -> Result<Vec<TeleplaySrc>, Error> {
@@ -213,7 +215,7 @@ impl TeleplayParse for IJUJITVParser {
 }
 
 impl EpisodeParse for IJUJITVParser {
-    async fn parse(&self, html: &str, _requestor: Arc<impl Request>) -> Result<Uri, Error> {
+    async fn parse(&self, html: &str, _org_rul: &str, _requestor: Arc<impl Request>) -> Result<Uri, Error> {
         let html = Html::parse_document(html);
         let m3u8_selector = Selector::parse("div.playBox script")?;
         let m3u8_json = html

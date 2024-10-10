@@ -52,6 +52,7 @@ pub trait EpisodeParse {
     async fn parse(
         &self,
         html: &str,
+        _org_rul: &str,
         _requestor: Arc<impl Request>,
     ) -> Result<Uri, self::error::Error>;
 }
@@ -127,7 +128,7 @@ where
             .requestor
             .request_with_cache(&self.info.url, Duration::new(24 * 60 * 60 * 30, 0))
             .await?;
-        self.uri = self.parser.parse(&body, self.requestor.clone()).await?;
+        self.uri = self.parser.parse(&body, &self.info.url, self.requestor.clone()).await?;
         return Ok(self.uri.clone());
     }
 }
@@ -231,6 +232,7 @@ pub trait TeleplayParse {
     async fn parse(
         &self,
         html: &str,
+        _org_rul: &str,
         _teleplay_info: &mut TeleplayInfo,
         _requestor: Arc<impl Request>,
     ) -> Result<Vec<TeleplaySrc>, self::error::Error>;
@@ -368,7 +370,7 @@ where
         let mut hub_url = Url::parse(&self.info.home_page).unwrap();
         let teleplay_srcs = self
             .parser
-            .parse(&response, &mut self.info, self.requestor.clone())
+            .parse(&response, &self.info.home_page.clone(),&mut self.info, self.requestor.clone())
             .await?;
         for teleplay_src in teleplay_srcs {
             let mut episodes_list = Vec::new();
@@ -388,6 +390,7 @@ pub trait ResourceParse {
     async fn parse(
         &self,
         html: &str,
+        _org_rul: &str,
         _requestor: Arc<impl Request>,
     ) -> Result<Vec<TeleplayInfo>, self::error::Error>;
 }
@@ -507,11 +510,12 @@ where
         search_url
             .query_pairs_mut()
             .append_pair(&self.info.search_key, keyword);
+        let search_url = search_url.to_string();
         let respose = self
             .requestor
-            .request_with_cache(&search_url.to_string(), Duration::new(24 * 60 * 60 * 30, 0))
+            .request_with_cache(&search_url, Duration::new(24 * 60 * 60 * 30, 0))
             .await?;
-        let teleplay_infos = self.parser.parse(&respose, self.requestor.clone()).await?;
+        let teleplay_infos = self.parser.parse(&respose, &search_url,self.requestor.clone()).await?;
         for mut info in teleplay_infos {
             host.set_path(&info.home_page);
             info.home_page = host.to_string();

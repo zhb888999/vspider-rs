@@ -2,9 +2,51 @@ use super::super::error::Error;
 use super::super::{EpisodeInfo, ResourceInfo, TeleplayInfo, TeleplaySrc, URIType, Uri};
 use super::super::{EpisodeParse, GenerateInfo, Request, ResourceParse, TeleplayParse};
 use scraper::{ElementRef, Html, Selector};
-use serde_json::Value;
 use std::sync::Arc;
-use std::collections::HashMap;
+use headless_chrome::browser::tab::RequestInterceptor;
+use headless_chrome::protocol::cdp::Network::ResourceType;
+use headless_chrome::{Browser, LaunchOptions};
+// use std::error::Error;
+use std::sync::RwLock;
+use tokio::sync::Notify;
+// use std::ffi::{OsStr, OsString};
+
+struct MyInterceptor {
+    uri: Arc<RwLock<Option<String>>>,
+    tab: Arc<headless_chrome::browser::tab::Tab>,
+    notify: Notify,
+}
+
+impl MyInterceptor {
+    fn new(tab: Arc<headless_chrome::browser::tab::Tab>) -> Self {
+        Self {
+            uri: Arc::new(RwLock::new(None)),
+            tab,
+            notify: Notify::new(),
+        }
+    }
+
+    async fn get_uri(&self) -> String {
+        self.notify.notified().await;
+        return self.uri.read().unwrap().as_ref().unwrap().clone();
+    }
+}
+ 
+impl RequestInterceptor for MyInterceptor {
+    fn intercept(
+        &self,
+        _transport: Arc<headless_chrome::browser::transport::Transport>,
+        _session_id: headless_chrome::browser::transport::SessionId,
+        event: headless_chrome::protocol::cdp::Fetch::events::RequestPausedEvent,
+    ) -> headless_chrome::browser::tab::RequestPausedDecision  {
+        if event.params.resource_Type == ResourceType::Xhr && event.params.request.url.ends_with(".m3u8") {
+            self.uri.write().unwrap().replace(event.params.request.url.clone());
+            let _ = self.tab.close(false);
+            self.notify.notify_one();
+        }
+        headless_chrome::browser::tab::RequestPausedDecision::Continue(None)
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct JUGOUGOUParser {
@@ -50,6 +92,7 @@ impl ResourceParse for JUGOUGOUParser {
     async fn parse(
         &self,
         html: &str,
+        _org_rul: &str,
         _requestor: Arc<impl Request>,
     ) -> Result<Vec<TeleplayInfo>, Error> {
         let html = Html::parse_document(&html);
@@ -106,6 +149,7 @@ impl TeleplayParse for JUGOUGOUParser {
     async fn parse(
         &self,
         html: &str,
+        _org_rul: &str,
         _teleplay_info: &mut TeleplayInfo,
         _requestor: Arc<impl Request>,
     ) -> Result<Vec<TeleplaySrc>, Error> {
@@ -191,38 +235,69 @@ impl TeleplayParse for JUGOUGOUParser {
     }
 }
 
+// impl EpisodeParse for JUGOUGOUParser {
+//     async fn parse(&self, html: &str, _org_rul: &str, _requestor: Arc<impl Request>) -> Result<Uri, Error> {
+//         let html = Html::parse_document(html);
+//         let m3u8_selector = Selector::parse("div.ewave-player__video.embed-responsive script")?;
+//         let m3u8_json = html
+//             .select(&m3u8_selector)
+//             .next()
+//             .ok_or_else(|| Error::ParseError("Failed to find m3u8 json msg".to_string()))?
+//             .inner_html()
+//             .split("=")
+//             .skip(1)
+//             .collect::<Vec<_>>()
+//             .join("")
+//             .trim()
+//             .to_string();
+//         let msg: Value = serde_json::from_str(&m3u8_json)?;
+//         println!("url: {:?}", msg["url"]);
+//         let mut form_data = HashMap::new();
+
+//         let vid = msg["url"]
+//             .as_str()
+//             .ok_or_else(|| {
+//                 Error::ParseError("Faild to find url string from json msg".to_string())
+//             })?
+//             .trim_matches('"')
+//             .to_string();
+//         let res = _requestor.request( &format!("https://www.jugougou.me/parse/index.php?vid={}", vid)).await?;
+//         // println!("res: {:?}", res);
+//         let new_vid = form_urlencoded::byte_serialize(vid.as_bytes()).collect();
+//         println!("new: {:?}", new_vid);
+//         println!("old: {:?}", vid);
+//         form_data.insert("vid".to_string(), new_vid);
+//         let res =_requestor.post_request("https://www.jugougou.me/parse/api.php", form_data).await?;
+//         println!("res: {:?}", res);
+
+//         Ok(Uri {
+//             uri: "".to_string(),
+//             utype: URIType::M3U8,
+//         })
+//     }
+// }
+
 impl EpisodeParse for JUGOUGOUParser {
-    async fn parse(&self, html: &str, _requestor: Arc<impl Request>) -> Result<Uri, Error> {
-        let html = Html::parse_document(html);
-        let m3u8_selector = Selector::parse("div.ewave-player__video.embed-responsive script")?;
-        let m3u8_json = html
-            .select(&m3u8_selector)
-            .next()
-            .ok_or_else(|| Error::ParseError("Failed to find m3u8 json msg".to_string()))?
-            .inner_html()
-            .split("=")
-            .skip(1)
-            .collect::<Vec<_>>()
-            .join("")
-            .trim()
-            .to_string();
-        let msg: Value = serde_json::from_str(&m3u8_json)?;
-        println!("url: {:?}", msg["url"]);
-        let mut form_data = HashMap::new();
+    async fn parse(&self, _html: &str, _org_rul: &str, _requestor: Arc<impl Request>) -> Result<Uri, Error> {
+        let launch_options = LaunchOptions::default_builder()
+            .headless(true) // 设置为无头模式
+            .build().unwrap();
+        let browser = Browser::new(launch_options).unwrap();
+        let tab = browser.new_tab().unwrap();
+        let interceptor = Arc::new(MyInterceptor::new(tab.clone()));
+        // 创建一个新的标签页
+        tab.enable_fetch(None, None).unwrap();
+        tab.enable_request_interception(interceptor.clone()).unwrap();
+        
+        // 加载你感兴趣的视频页面
 
-        let vid = msg["url"]
-            .as_str()
-            .ok_or_else(|| {
-                Error::ParseError("Faild to find url string from json msg".to_string())
-            })?
-            .trim_matches('"')
-            .to_string();
-        form_data.insert("vid".to_string(), vid);
-        let res =_requestor.post_request("https://www.jugougou.me/parse/api.php", form_data).await?;
-        println!("res: {:?}", res);
-
+        tab.navigate_to(_org_rul).unwrap();
+        tab.wait_for_element("div#globalNotice").unwrap();
+        tab.evaluate("redirectUrlToActive();", true).unwrap();
+        tab.wait_for_element("div.MacPlayer").unwrap().click().unwrap();
+        let uri = interceptor.get_uri().await;
         Ok(Uri {
-            uri: "".to_string(),
+            uri,
             utype: URIType::M3U8,
         })
     }
