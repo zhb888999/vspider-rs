@@ -6,16 +6,60 @@ use crate::vrsr::ZBKYYYParser;
 use crate::vrsr::IJUJITVParser;
 use crate::vrsr::JUGOUGOUParser;
 use bytes::Buf;
-use tokio::io::copy;
+use tokio::io::{copy, AsyncWriteExt};
 use thiserror::Error;
 use crate::args::Src;
 use crate::vrsr::GeneralResource;
+use anyhow::anyhow;
+use tokio::fs;
+use futures::stream::{self, StreamExt};
 
-async fn download_file(url: &str, save_path: &str) -> Result<(), VRSRError> {
+
+pub async fn download_file(url: &str, save_path: &str) -> Result<(), anyhow::Error> {
+    let path = std::path::Path::new(&save_path);
     let client = reqwest::Client::new();
-    let response = client.get(url).send().await?;
-    let mut file = tokio::fs::File::create(save_path).await?;
-    copy(&mut response.bytes().await?.chunk(), &mut file).await?;
+    let total_size = {
+        let resp = client.head(url).send().await?;
+        if resp.status().is_success() {
+            resp.headers()
+                .get(reqwest::header::CONTENT_LENGTH)
+                .and_then(|ct_len| ct_len.to_str().ok())
+                .and_then(|ct_len| ct_len.parse().ok())
+                .unwrap_or(0)
+        } else {
+            return Err(anyhow!(
+                "Couldn't download URL: {}. Error: {:?}",
+                url,
+                resp.status(),
+            ));
+        }
+    };
+    let client = reqwest::Client::new();
+    let mut request = client.get(url);
+    let pb = indicatif::ProgressBar::new(total_size / 1024 / 1024);
+    let sty = indicatif::ProgressStyle::with_template(
+        "[{elapsed_precise}] {bar:100.cyan/blue} {pos:>4}/{len:4}MB {msg}",
+    ).unwrap();
+    pb.set_style(sty);
+    pb.set_message(save_path.to_string());
+
+    if path.exists() {
+        let size = path.metadata()?.len().saturating_sub(1);
+        request = request.header(reqwest::header::RANGE, format!("bytes={}-", size));
+        pb.inc(size);
+    }
+    let mut download_size = 0u64;
+    let source = request.send().await?;
+    let mut dest = fs::OpenOptions::new().create(true).append(true).open(&path).await?;
+    let mut stream = source.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk?;
+        dest.write_all(&chunk).await?;
+        download_size += chunk.len() as u64;
+        pb.set_position(download_size / 1024 / 1024);
+    }
+    pb.set_position(total_size / 1024 / 1024);
+    pb.finish_with_message(format!("{} succcess", save_path));
     Ok(())
 }
 
@@ -91,14 +135,13 @@ where
         if let Some(result) = teleplay_src.get(index - 1) {
             let mut builder = M3U8DownloadBuilder::new();
             for (index, episode) in result.1.iter().enumerate() {
-
                 let mut episode_locked = episode.lock().await;
-                let uri = episode_locked.request().await?;
                 println!("download {} => {}", index, episode_locked.name());
                 let save_file = save_path.join(format!("{}.mp4", episode_locked.name()));
                 if std::path::Path::exists(&save_file) {
                     continue;
                 }
+                let uri = episode_locked.request().await?;
                 let save_file = save_file.to_string_lossy();
                 match uri.utype {
                     URIType::M3U8 => {
@@ -111,7 +154,7 @@ where
                         downloader.download().await.unwrap();
                     }
                     URIType::MP4 => {
-                        download_file(&uri.uri,&save_file).await?;
+                        download_file(&uri.uri,&save_file).await.unwrap();
                     }
                     _ => {
                         println!("Unsupported URI type");

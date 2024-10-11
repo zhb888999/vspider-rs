@@ -280,7 +280,7 @@ impl M3U8Download {
                 error!("download task error!");
             }
         }
-        self.pbar.as_ref().unwrap().finish();
+        self.pbar.as_ref().unwrap().finish_with_message(format!("{} success", self.save_file.clone()));
         self.convert().await?;
         if self.check_integrity() {
             Ok(())
