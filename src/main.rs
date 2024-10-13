@@ -1,16 +1,14 @@
 mod args;
-mod m3u8;
-mod utils;
-mod vrsr;
 mod commands;
+mod downloader;
+mod vrsr;
 
 use args::{Cli, Mode};
 use clap::Parser;
+use commands::{download, m3u8_download, search, CommandError};
+use downloader::{DownloadError, M3U8DownloadBuilder};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use m3u8::{DownloadError, M3U8DownloadBuilder};
 use std::collections::HashMap;
-use commands::{CommandError, search, download, m3u8_download};
-
 
 #[tokio::main]
 async fn main() -> Result<(), CommandError> {
@@ -18,13 +16,30 @@ async fn main() -> Result<(), CommandError> {
     let cli = Cli::parse();
     if let Some(mode) = cli.mode {
         match mode {
-            Mode::Search {keyword, src, all, nocache} => {
+            Mode::Search {
+                keyword,
+                src,
+                all,
+                nocache,
+            } => {
                 search(&keyword, src, all, nocache).await?;
-            },
-            Mode::Download {id, src, index, nocache, save_dir, print, climit} => {
+            }
+            Mode::Download {
+                id,
+                src,
+                index,
+                nocache,
+                save_dir,
+                print,
+                climit,
+            } => {
                 download(id, src, index, nocache, &save_dir, print, climit).await?;
             }
-            Mode::M3U8 {url, output, climit} => {
+            Mode::M3U8 {
+                url,
+                output,
+                climit,
+            } => {
                 m3u8_download(&url, &output, climit).await?;
             }
         }

@@ -10,8 +10,8 @@ mod parser;
 pub mod request;
 
 pub use self::parser::ijujitv::IJUJITVParser;
-pub use self::parser::zbkyyy::ZBKYYYParser;
 pub use self::parser::jugougou::JUGOUGOUParser;
+pub use self::parser::zbkyyy::ZBKYYYParser;
 pub use self::request::RequestorBuilder;
 
 pub trait Request {
@@ -21,7 +21,13 @@ pub trait Request {
         url: &str,
         cache_time: Duration,
     ) -> Result<String, self::error::Error>;
-    async fn post_request(&self, url: &str, form_data: std::collections::HashMap<String, String>) -> Result<String, self::error::Error>;
+
+    #[allow(unused)]
+    async fn post_request(
+        &self,
+        url: &str,
+        form_data: std::collections::HashMap<String, String>,
+    ) -> Result<String, self::error::Error>;
 }
 
 #[allow(unused)]
@@ -128,7 +134,10 @@ where
             .requestor
             .request_with_cache(&self.info.url, Duration::new(24 * 60 * 60 * 30, 0))
             .await?;
-        self.uri = self.parser.parse(&body, &self.info.url, self.requestor.clone()).await?;
+        self.uri = self
+            .parser
+            .parse(&body, &self.info.url, self.requestor.clone())
+            .await?;
         return Ok(self.uri.clone());
     }
 }
@@ -181,24 +190,25 @@ impl std::fmt::Display for TeleplayInfo {
         write!(f, "|影片ID:{}\n", self.id)?;
         write!(f, "|影片名称:{}", self.title)?;
         if let Some(ref status) = self.status {
-            write!(f, "[{}]\n", status)?;
-        } else {
-            write!(f, "\n")?;
-        }
+            write!(f, "[{}]", status)?;
+        };
         if let Some(director) = self.director.as_ref() {
-            write!(f, "|导演:{} ", director.join(","))?;
+            write!(f, "\n|导演:{}", director.join(","))?;
         };
         if let Some(ref times) = self.times {
-            write!(f, "年代:{} ", times)?;
+            write!(f, "\n|年代:{} ", times)?;
         };
         if let Some(ref language) = self.language {
-            write!(f, "语言:{}\n", language)?;
+            write!(f, "\n|语言:{}", language)?;
         };
         if let Some(ref starring) = self.starring {
-            write!(f, "|演员:{}\n", starring.join("/"))?;
+            write!(f, "\n|演员:{}", starring.join("/"))?;
+        };
+        if let Some(ref update_time) = self.update_time {
+            write!(f, "\n|更新时间:{}", update_time)?;
         };
         if let Some(ref intersection) = self.introduction {
-            write!(f, "|简介:{}", intersection)?;
+            write!(f, "\n|简介:{}", intersection)?;
         };
         Ok(())
     }
@@ -362,7 +372,8 @@ where
 
     async fn request(
         &'a mut self,
-    ) -> Result<&'a Vec<(Option<String>, Vec<Arc<Mutex<Self::EpisodeType>>>)>, self::error::Error> {
+    ) -> Result<&'a Vec<(Option<String>, Vec<Arc<Mutex<Self::EpisodeType>>>)>, self::error::Error>
+    {
         let response = self
             .requestor
             .request_with_cache(&self.info.home_page, Duration::new(24 * 60 * 60 * 30, 0))
@@ -370,7 +381,12 @@ where
         let mut hub_url = Url::parse(&self.info.home_page).unwrap();
         let teleplay_srcs = self
             .parser
-            .parse(&response, &self.info.home_page.clone(),&mut self.info, self.requestor.clone())
+            .parse(
+                &response,
+                &self.info.home_page.clone(),
+                &mut self.info,
+                self.requestor.clone(),
+            )
             .await?;
         for teleplay_src in teleplay_srcs {
             let mut episodes_list = Vec::new();
@@ -515,7 +531,10 @@ where
             .requestor
             .request_with_cache(&search_url, Duration::new(24 * 60 * 60 * 30, 0))
             .await?;
-        let teleplay_infos = self.parser.parse(&respose, &search_url,self.requestor.clone()).await?;
+        let teleplay_infos = self
+            .parser
+            .parse(&respose, &search_url, self.requestor.clone())
+            .await?;
         for mut info in teleplay_infos {
             host.set_path(&info.home_page);
             info.home_page = host.to_string();

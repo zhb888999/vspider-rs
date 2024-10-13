@@ -1,11 +1,11 @@
 use super::super::error::Error;
 use super::super::{EpisodeInfo, ResourceInfo, TeleplayInfo, TeleplaySrc, URIType, Uri};
 use super::super::{EpisodeParse, GenerateInfo, Request, ResourceParse, TeleplayParse};
-use scraper::{ElementRef, Html, Selector};
-use std::sync::Arc;
 use headless_chrome::browser::tab::RequestInterceptor;
 use headless_chrome::protocol::cdp::Network::ResourceType;
 use headless_chrome::{Browser, LaunchOptions};
+use scraper::{ElementRef, Html, Selector};
+use std::sync::Arc;
 use std::sync::RwLock;
 use tokio::sync::Notify;
 
@@ -29,21 +29,23 @@ impl MyInterceptor {
         return self.uri.read().unwrap().as_ref().unwrap().clone();
     }
 }
- 
+
 impl RequestInterceptor for MyInterceptor {
     fn intercept(
         &self,
         _transport: Arc<headless_chrome::browser::transport::Transport>,
         _session_id: headless_chrome::browser::transport::SessionId,
         event: headless_chrome::protocol::cdp::Fetch::events::RequestPausedEvent,
-    ) -> headless_chrome::browser::tab::RequestPausedDecision  {
+    ) -> headless_chrome::browser::tab::RequestPausedDecision {
         if self.uri.read().unwrap().is_some() {
             return headless_chrome::browser::tab::RequestPausedDecision::Continue(None);
         }
-        if event.params.resource_Type == ResourceType::Xhr && event.params.request.url.ends_with(".m3u8") {
+        if event.params.resource_Type == ResourceType::Xhr
+            && event.params.request.url.ends_with(".m3u8")
+        {
             self.uri.write().unwrap().replace(Uri {
                 uri: event.params.request.url.clone(),
-                utype: URIType::M3U8, 
+                utype: URIType::M3U8,
             });
             let _ = self.tab.close(false);
             self.notify.notify_one();
@@ -51,7 +53,7 @@ impl RequestInterceptor for MyInterceptor {
         if event.params.resource_Type == ResourceType::Media {
             self.uri.write().unwrap().replace(Uri {
                 uri: event.params.request.url.clone(),
-                utype: URIType::MP4, 
+                utype: URIType::MP4,
             });
             let _ = self.tab.close(false);
             self.notify.notify_one();
@@ -110,7 +112,9 @@ impl ResourceParse for JUGOUGOUParser {
         let html = Html::parse_document(&html);
         let mut infos: Vec<TeleplayInfo> = Vec::new();
 
-        let search_list_selector = Selector::parse("div.ewave-pannel.clearfix ul.ewave-vodlist.clearfix li.ewave-vodlist__item")?;
+        let search_list_selector = Selector::parse(
+            "div.ewave-pannel.clearfix ul.ewave-vodlist.clearfix li.ewave-vodlist__item",
+        )?;
         let title_selector = Selector::parse("h4.ewave-vodlist__title a")?;
         let home_page_selector = Selector::parse("h4.ewave-vodlist__title a")?;
         let cover_selector = Selector::parse("a.ewave-vodlist__thumb.lazyload")?;
@@ -165,9 +169,10 @@ impl TeleplayParse for JUGOUGOUParser {
         _teleplay_info: &mut TeleplayInfo,
         _requestor: Arc<impl Request>,
     ) -> Result<Vec<TeleplaySrc>, Error> {
-        println!("start: {:?}", _teleplay_info);
         let html = Html::parse_document(&html);
-        let elements_selector = Selector::parse("div.container div.row div.foornav+div.ewave-pannel.clearfix div.ewave-content__detail")?;
+        let elements_selector = Selector::parse(
+            "div.container div.row div.foornav+div.ewave-pannel.clearfix div.ewave-content__detail",
+        )?;
         let introduction_selector = Selector::parse("div.container div.row div.ewave-header__menu.clearfix+div.ewave-pannel.clearfix div.ewave-content div.art-content")?;
         let title_selector = Selector::parse("h3.title")?;
         let genre_selector = Selector::parse("p:nth-child(3)")?;
@@ -188,7 +193,9 @@ impl TeleplayParse for JUGOUGOUParser {
             )
         };
 
-        let elements = html.select(&elements_selector).next()
+        let elements = html
+            .select(&elements_selector)
+            .next()
             .ok_or_else(|| Error::ParseError("Failed to find elements".to_string()))?;
 
         if let Some(title) = element_parse(elements, &title_selector) {
@@ -211,25 +218,35 @@ impl TeleplayParse for JUGOUGOUParser {
 
         if let Some(language) = element_parse(elements, &language_selector) {
             _teleplay_info.language.replace(language);
-        }   
+        }
 
         if let Some(update_time) = element_parse(elements, &update_selector) {
             _teleplay_info.update_time.replace(update_time);
         }
 
         if let Some(introduction) = html.select(&introduction_selector).next() {
-            _teleplay_info.introduction.replace(introduction.inner_html().trim().to_string());
+            _teleplay_info
+                .introduction
+                .replace(introduction.inner_html().trim().to_string());
         }
-        println!("end: {:?}", _teleplay_info);
 
         let mut sources: Vec<TeleplaySrc> = Vec::new();
-        // let srcs_name_selector = Selector::parse("div.play_source_tab.clearfix a")?;
-        let srcs_selector = Selector::parse("div.container div.row div.ewave-pannel.clearfix+div.ewave-pannel.clearfix")?;
+        let srcs_selector = Selector::parse(
+            "div.container div.row div.ewave-pannel.clearfix+div.ewave-pannel.clearfix",
+        )?;
         let name_selector = Selector::parse("div.ewave-pannel__head.clearfix h3.title")?;
-        let uri_selector = Selector::parse("div.ewave-content.col-pd.clearfix div.ewave-content__playlist ul li a")?;
+        let uri_selector = Selector::parse(
+            "div.ewave-content.col-pd.clearfix div.ewave-content__playlist ul li a",
+        )?;
         for src in html.select(&srcs_selector) {
             let mut source: TeleplaySrc = TeleplaySrc::new();
-            source.set_name(src.select(&name_selector).next().unwrap().inner_html().trim());
+            source.set_name(
+                src.select(&name_selector)
+                    .next()
+                    .unwrap()
+                    .inner_html()
+                    .trim(),
+            );
             for uri in src.select(&uri_selector) {
                 let info = EpisodeInfo {
                     name: uri.inner_html().trim().to_string(),
@@ -290,23 +307,33 @@ impl TeleplayParse for JUGOUGOUParser {
 // }
 
 impl EpisodeParse for JUGOUGOUParser {
-    async fn parse(&self, _html: &str, _org_rul: &str, _requestor: Arc<impl Request>) -> Result<Uri, Error> {
+    async fn parse(
+        &self,
+        _html: &str,
+        _org_rul: &str,
+        _requestor: Arc<impl Request>,
+    ) -> Result<Uri, Error> {
         let launch_options = LaunchOptions::default_builder()
-            .headless(true) // 设置为无头模式
-            .build().unwrap();
+            .headless(false) // 设置为无头模式
+            .build()
+            .unwrap();
         let browser = Browser::new(launch_options).unwrap();
         let tab = browser.new_tab().unwrap();
         let interceptor = Arc::new(MyInterceptor::new(tab.clone()));
         // 创建一个新的标签页
         tab.enable_fetch(None, None).unwrap();
-        tab.enable_request_interception(interceptor.clone()).unwrap();
-        
+        tab.enable_request_interception(interceptor.clone())
+            .unwrap();
+
         // 加载你感兴趣的视频页面
 
         tab.navigate_to(_org_rul).unwrap();
         tab.wait_for_element("div#globalNotice").unwrap();
         tab.evaluate("redirectUrlToActive();", true).unwrap();
-        tab.wait_for_element("div.MacPlayer").unwrap().click().unwrap();
+        tab.wait_for_element("div.MacPlayer")
+            .unwrap()
+            .click()
+            .unwrap();
         let uri = interceptor.get_uri().await;
         Ok(uri)
     }

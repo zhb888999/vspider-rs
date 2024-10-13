@@ -12,7 +12,7 @@ pub enum Mode {
     /// Search for videos on various platforms
     Search {
         keyword: String,
-        #[arg(short, long, default_value = "zbkyyy")]
+        #[arg(short, long, default_value = "jugougou")]
         src: Src,
         #[arg(short, long)]
         all: bool,
@@ -22,7 +22,7 @@ pub enum Mode {
     /// Download a video from a platform
     Download {
         id: u64,
-        #[arg(short, long, default_value = "zbkyyy")]
+        #[arg(short, long, default_value = "jugougou")]
         src: Src,
         #[arg(short, long, default_value = "1")]
         index: usize,

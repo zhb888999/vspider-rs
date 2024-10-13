@@ -1,28 +1,14 @@
+use super::error::DownloadError;
 use bytes::Buf;
 use indicatif::{ProgressBar, ProgressStyle};
 use log::{error, info, warn};
 use m3u8_rs::{MasterPlaylist, MediaPlaylist, Playlist};
-use thiserror::Error;
+use std::sync::Arc;
 use tokio::fs::File;
 use tokio::io::copy;
-use tokio::task::JoinSet;
-use url::{ParseError, Url};
-use std::sync::Arc;
 use tokio::sync::Semaphore;
-
-#[derive(Error, Debug)]
-pub enum DownloadError {
-    #[error("create file error")]
-    CreateFile(#[from] std::io::Error),
-    #[error("reqwest error")]
-    Reqwest(#[from] reqwest::Error),
-    #[error("reqwest error")]
-    URIParse(#[from] ParseError),
-    #[error("url invailable")]
-    URI,
-    #[error("download incomplete")]
-    Incomplete,
-}
+use tokio::task::JoinSet;
+use url::Url;
 
 struct Segment {
     pub uri: String,
@@ -229,12 +215,10 @@ impl M3U8Download {
                 let semaphore = semaphore.clone();
                 let (uri, file, timeout) =
                     (segment.uri.clone(), segment.save_file.clone(), self.timeout);
-                tasks.spawn(
-                    async move { 
-                        let _permit = semaphore.acquire().await.unwrap();
-                        (index, Self::download_segment(&uri, &file, timeout).await) 
-                    },
-                );
+                tasks.spawn(async move {
+                    let _permit = semaphore.acquire().await.unwrap();
+                    (index, Self::download_segment(&uri, &file, timeout).await)
+                });
             } else {
                 info!("use cache file @ {} uri={}", index, segment.uri);
                 segment.success = true;
@@ -280,7 +264,7 @@ impl M3U8Download {
                 error!("download task error!");
             }
         }
-        self.pbar.as_ref().unwrap().finish_with_message(format!("{} success", self.save_file.clone()));
+        self.pbar.as_ref().unwrap().finish();
         self.convert().await?;
         if self.check_integrity() {
             Ok(())
