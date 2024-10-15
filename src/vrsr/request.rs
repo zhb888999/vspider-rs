@@ -55,16 +55,8 @@ impl Requestor {
     async fn read_cache(&self, path: &str) -> Result<String, std::io::Error> {
         if std::path::Path::new(&path).exists() {
             let mut file = tokio::fs::File::open(path).await?;
-
-            // let mut buffer = Vec::new();
-            // file.read_to_end(&mut buffer).await?;
-            // let content = String::from_utf8(buffer)
-            //     .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-
             let mut content = String::new();
             file.read_to_string(&mut content).await?;
-
-            // println!("read cache success, path: {}", path);
             Ok(content)
         } else {
             Err(std::io::Error::new(
@@ -107,14 +99,21 @@ impl Request for Requestor {
         Err(Error::RequestOutOfTry(try_count))
     }
 
-    async fn post_request(&self, url: &str, form_data: HashMap<String, String>) -> Result<String, Error> {
+    async fn post_request(
+        &self,
+        url: &str,
+        form_data: HashMap<String, String>,
+    ) -> Result<String, Error> {
         let mut try_count = 0u64;
         while self.try_count == 0 || try_count < self.try_count {
-            let response = self.client.clone()
-               .post(url)
-               .form(&form_data)
-               .headers(self.headers.clone())
-               .send().await?;
+            let response = self
+                .client
+                .clone()
+                .post(url)
+                .form(&form_data)
+                .headers(self.headers.clone())
+                .send()
+                .await?;
             if response.status().is_success() {
                 let body = response.text().await?;
                 return Ok(body);
@@ -127,7 +126,7 @@ impl Request for Requestor {
     async fn request_with_cache(&self, url: &str, cache_time: Duration) -> Result<String, Error> {
         let cache_path = self.get_cache_path(url);
         if !self.ignore_cache {
-            if  let Some(time) = self.modifie_time(&cache_path).await {
+            if let Some(time) = self.modifie_time(&cache_path).await {
                 if time < cache_time {
                     let cache = self.read_cache(&cache_path).await;
                     if let Ok(cache) = cache {

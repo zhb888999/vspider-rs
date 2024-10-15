@@ -9,13 +9,13 @@ use std::sync::Arc;
 use std::sync::RwLock;
 use tokio::sync::Notify;
 
-struct MyInterceptor {
+struct VideoInterceptor {
     uri: Arc<RwLock<Option<Uri>>>,
     tab: Arc<headless_chrome::browser::tab::Tab>,
     notify: Notify,
 }
 
-impl MyInterceptor {
+impl VideoInterceptor {
     fn new(tab: Arc<headless_chrome::browser::tab::Tab>) -> Self {
         Self {
             uri: Arc::new(RwLock::new(None)),
@@ -30,7 +30,7 @@ impl MyInterceptor {
     }
 }
 
-impl RequestInterceptor for MyInterceptor {
+impl RequestInterceptor for VideoInterceptor {
     fn intercept(
         &self,
         _transport: Arc<headless_chrome::browser::transport::Transport>,
@@ -310,30 +310,30 @@ impl EpisodeParse for JUGOUGOUParser {
     async fn parse(
         &self,
         _html: &str,
-        _org_rul: &str,
+        org_rul: &str,
         _requestor: Arc<impl Request>,
     ) -> Result<Uri, Error> {
         let launch_options = LaunchOptions::default_builder()
-            .headless(false) // 设置为无头模式
+            .headless(false)
             .build()
             .unwrap();
-        let browser = Browser::new(launch_options).unwrap();
-        let tab = browser.new_tab().unwrap();
-        let interceptor = Arc::new(MyInterceptor::new(tab.clone()));
-        // 创建一个新的标签页
-        tab.enable_fetch(None, None).unwrap();
+        let browser = Browser::new(launch_options).map_err(|_| Error::BrowserError)?;
+        let tab = browser.new_tab().map_err(|_| Error::BrowserError)?;
+        let interceptor = Arc::new(VideoInterceptor::new(tab.clone()));
+        tab.enable_fetch(None, None)
+            .map_err(|_| Error::BrowserError)?;
         tab.enable_request_interception(interceptor.clone())
-            .unwrap();
-
-        // 加载你感兴趣的视频页面
-
-        tab.navigate_to(_org_rul).unwrap();
-        tab.wait_for_element("div#globalNotice").unwrap();
-        tab.evaluate("redirectUrlToActive();", true).unwrap();
+            .map_err(|_| Error::BrowserError)?;
+        tab.navigate_to(org_rul).map_err(|_| Error::BrowserError)?;
+        tab.wait_for_element("div#globalNotice")
+            .map_err(|_| Error::BrowserError)?;
+        tab.evaluate("redirectUrlToActive();", true)
+            .map_err(|_| Error::BrowserError)?;
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
         tab.wait_for_element("div.MacPlayer")
-            .unwrap()
+            .map_err(|_| Error::BrowserError)?
             .click()
-            .unwrap();
+            .map_err(|_| Error::BrowserError)?;
         let uri = interceptor.get_uri().await;
         Ok(uri)
     }

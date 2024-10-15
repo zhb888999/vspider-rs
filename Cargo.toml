@@ -4,12 +4,15 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+aes = "0.8.4"
 anyhow = "1.0.89"
 bytes = "1.7.1"
+cbc = "0.1.2"
 clap = { version = "4.5.18", features = ["derive"] }
 env_logger = "0.11.5"
 futures = "0.3.31"
 headless_chrome = "1.0.15"
+hex = "0.4.3"
 indicatif = "0.17.8"
 log = "0.4.22"
 m3u8-rs = "6.0.0"

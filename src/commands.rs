@@ -141,8 +141,12 @@ where
                 "[{prefix}][{elapsed_precise}] {bar:100.cyan/blue} {pos:>4}/{len:4}MB {msg}",
             )
             .unwrap();
-            let default_style = ProgressStyle::with_template(
+            let downloaded_style = ProgressStyle::with_template(
                 "[{prefix}][{elapsed_precise}] {bar:100.cyan/blue} 已下载 {msg}",
+            )
+            .unwrap();
+            let parse_style = ProgressStyle::with_template(
+                "[{prefix}][{elapsed_precise}] {bar:100.cyan/blue} 解析中... {msg}",
             )
             .unwrap();
             let mut m3u8_builder = M3U8DownloadBuilder::new();
@@ -154,11 +158,12 @@ where
                 let save_file = save_file_path.to_string_lossy().to_string();
 
                 let pbar = pbars.add(ProgressBar::hidden());
+                pbar.set_style(parse_style.clone());
                 pbar.set_prefix(format!("{:02}/{:02}", index + 1, episode_count));
                 pbar.set_message(save_file.clone());
 
                 if save_file_path.exists() {
-                    pbar.set_style(default_style.clone());
+                    pbar.set_style(downloaded_style.clone());
                     pbar.set_length(100);
                     pbar.set_position(100);
                     pbar.finish();

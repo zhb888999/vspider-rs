@@ -2,7 +2,8 @@ use super::error::DownloadError;
 use bytes::Buf;
 use indicatif::{ProgressBar, ProgressStyle};
 use log::{error, info, warn};
-use m3u8_rs::{MasterPlaylist, MediaPlaylist, Playlist};
+use m3u8_rs::{MasterPlaylist, MediaPlaylist, Playlist, KeyMethod};
+use std::{collections::HashMap, vec};
 use std::sync::Arc;
 use tokio::fs::File;
 use tokio::io::copy;
@@ -10,23 +11,36 @@ use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 use url::Url;
 
+use aes::cipher::{block_padding::Pkcs7, generic_array::GenericArray, BlockDecryptMut, KeyIvInit};
+
+type Aes128CbcDec = cbc::Decryptor<aes::Aes128>;
+
+#[derive(Clone)]
+struct AesKey {
+    key: Vec<u8>,
+    iv: Vec<u8>,
+}
+
 struct Segment {
     pub uri: String,
     pub save_file: String,
     pub try_count: i64,
     pub success: bool,
+    pub key: Option<AesKey>,
 }
 
 impl Segment {
-    pub fn new(uri: &str, save_file: &str) -> Self {
+    pub fn new(uri: &str, save_file: &str, key: Option<AesKey>) -> Self {
         Self {
             uri: uri.to_string(),
             save_file: save_file.to_string(),
             try_count: 0,
             success: false,
+            key,
         }
     }
 }
+
 
 // #[derive(Debug)]
 pub struct M3U8Download {
@@ -40,6 +54,7 @@ pub struct M3U8Download {
     ignore_cache: bool,
     pbar: Option<ProgressBar>,
     climit: usize,
+    aes_keys: HashMap<String, AesKey>,
 }
 
 impl M3U8Download {
@@ -47,7 +62,11 @@ impl M3U8Download {
         ts_uri: &str,
         save_file: &str,
         timeout: u64,
+        key: Option<AesKey>,
     ) -> Result<(), DownloadError> {
+        if let Some(key) = key {
+            return Self::download_segment_with_key(ts_uri, save_file, timeout, key).await;
+        }
         let mut file = File::create(save_file).await?;
         let client = reqwest::Client::builder()
             .danger_accept_invalid_certs(true)
@@ -64,6 +83,37 @@ impl M3U8Download {
         Ok(())
     }
 
+    async fn download_segment_with_key(
+        ts_uri: &str,
+        save_file: &str,
+        timeout: u64,
+        key: AesKey,
+    ) -> Result<(), DownloadError> {
+        let mut file = File::create(save_file).await?;
+        let client = reqwest::Client::builder()
+            .danger_accept_invalid_certs(true)
+            .build()
+            .unwrap();
+        let request = client.get(ts_uri);
+        let request = if timeout > 0 {
+            request.timeout(std::time::Duration::from_secs(timeout))
+        } else {
+            request
+        };
+        let response = request.send().await?;
+        let bytes = response.bytes().await?.to_vec();
+        let mut out_buf = vec![0u8; bytes.len()];
+
+        let iv = GenericArray::from_slice(&key.iv);
+        let key = GenericArray::from_slice(&key.key);
+
+        let mut ct = Aes128CbcDec::new(key, iv)
+            .decrypt_padded_b2b_mut::<Pkcs7>(bytes.as_slice(), out_buf.as_mut_slice()).unwrap();
+
+        copy(&mut ct, &mut file).await?;
+        Ok(())
+    }
+
     fn join_path(&self, file: &str) -> String {
         std::path::Path::new(&self.cache_dir)
             .join(file)
@@ -72,18 +122,50 @@ impl M3U8Download {
             .to_string()
     }
 
-    fn parse_media_playlist(
+    async fn parse_media_playlist(
         &mut self,
         playlist: MediaPlaylist,
         base_url: &Url,
     ) -> Result<(), DownloadError> {
         for segment in playlist.segments {
+            let key = match segment.key {
+                Some(key) => {
+                    match key.method {
+                        KeyMethod::AES128 => {
+                            let iv = key.iv.unwrap_or("0x00000000000000000000000000000000".to_string());
+                            let iv = hex::decode(&iv.split("0x").last().unwrap()).unwrap();
+                            let key_uri = base_url.join(key.uri.unwrap().as_str())?;
+                            let key = self.get_aes_key(key_uri.as_str(), iv).await?;
+                            Some(key)
+                        },
+                        _ => None,
+                    }
+                },
+                None => None,
+            };
             let segment_uri = base_url.join(segment.uri.as_str())?;
             let hash_name = sha256::digest(segment_uri.as_str());
-            let segment = Segment::new(segment_uri.as_str(), &self.join_path(&hash_name));
+            let segment = Segment::new(segment_uri.as_str(), &self.join_path(&hash_name), key);
             self.segments.push(segment);
         }
         Ok(())
+    }
+
+    async fn get_aes_key(&mut self, uri: &str, iv: Vec<u8>) -> Result<AesKey, DownloadError> {
+        if let Some(key) = self.aes_keys.get(uri) {
+            return Ok(key.clone());
+        }
+        let client = reqwest::Client::builder()
+            .danger_accept_invalid_certs(true)
+            .build()
+            .unwrap();
+        let request = client.get(uri);
+        let response = request.send().await?;
+        let body = response.bytes().await?;
+        let key = body.to_vec();
+        let aes_key = AesKey { key, iv: iv.clone() };
+        self.aes_keys.insert(uri.to_string(), aes_key.clone());
+        Ok(aes_key)
     }
 
     async fn parse_master_playlist(
@@ -99,7 +181,7 @@ impl M3U8Download {
         let body = client.get(url.as_str()).send().await?.bytes().await?;
         let (_i, playlist) =
             m3u8_rs::parse_media_playlist(&body).map_err(|_| DownloadError::URI)?;
-        self.parse_media_playlist(playlist, &url)
+        self.parse_media_playlist(playlist, &url).await
     }
 
     async fn parse_playlist(&mut self, base_url: &Url) -> Result<(), DownloadError> {
@@ -113,7 +195,7 @@ impl M3U8Download {
                 self.parse_master_playlist(playlist, base_url).await
             }
             Result::Ok((_i, Playlist::MediaPlaylist(playlist))) => {
-                self.parse_media_playlist(playlist, base_url)
+                self.parse_media_playlist(playlist, base_url).await
             }
             Result::Err(_) => Err(DownloadError::URI),
         }
@@ -213,11 +295,11 @@ impl M3U8Download {
             };
             if !exists || self.ignore_cache {
                 let semaphore = semaphore.clone();
-                let (uri, file, timeout) =
-                    (segment.uri.clone(), segment.save_file.clone(), self.timeout);
+                let (uri, file, timeout, key) =
+                    (segment.uri.clone(), segment.save_file.clone(), self.timeout, segment.key.clone());
                 tasks.spawn(async move {
                     let _permit = semaphore.acquire().await.unwrap();
-                    (index, Self::download_segment(&uri, &file, timeout).await)
+                    (index, Self::download_segment(&uri, &file, timeout, key).await)
                 });
             } else {
                 info!("use cache file @ {} uri={}", index, segment.uri);
@@ -240,10 +322,10 @@ impl M3U8Download {
                             "try download @ {} try_count={} uri={}",
                             index, segment.try_count, segment.uri
                         );
-                        let (uri, file, timeout) =
-                            (segment.uri.clone(), segment.save_file.clone(), self.timeout);
+                        let (uri, file, timeout , key) =
+                            (segment.uri.clone(), segment.save_file.clone(), self.timeout, segment.key.clone());
                         tasks.spawn(async move {
-                            (index, Self::download_segment(&uri, &file, timeout).await)
+                            (index, Self::download_segment(&uri, &file, timeout, key).await)
                         });
                         segment.try_count += 1;
                     } else {
@@ -373,6 +455,7 @@ impl M3U8DownloadBuilder {
             cache_file: None,
             pbar: self.pbar.take(),
             climit: self.climit,
+            aes_keys: HashMap::new(),
         }
     }
 }
