@@ -4,6 +4,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use tokio::fs::OpenOptions;
 use tokio::io::AsyncWriteExt;
 
+#[allow(unused)]
 pub struct MP4Download {
     uri: String,
     save_file: String,
@@ -55,12 +56,6 @@ impl MP4Download {
             .unwrap();
 
         let request = client.get(&self.uri);
-        let request = if self.timeout > 0 {
-            request.timeout(std::time::Duration::from_secs(self.timeout))
-        } else {
-            request
-        };
-
         let mut download_size = 0u64;
 
         let source = request.send().await?;
@@ -90,9 +85,9 @@ impl MP4Download {
     pub async fn download(&mut self) -> Result<(), DownloadError> {
         let total_size = self.get_total_size().await?.unwrap_or(0);
         if self.pbar.is_none() {
-            self.pbar = Some(self.default_pbar(total_size));
+            self.pbar = Some(self.default_pbar(Self::byte2mb(total_size)));
         } else {
-            self.pbar.as_mut().unwrap().set_length(total_size);
+            self.pbar.as_mut().unwrap().set_length(Self::byte2mb(total_size));
         }
         let mut try_count = 0i64;
         loop {
