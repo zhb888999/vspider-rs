@@ -5,6 +5,7 @@ use crate::vrsr::GeneralResource;
 use crate::vrsr::IJUJITVParser;
 use crate::vrsr::JUGOUGOUParser;
 use crate::vrsr::ZBKYYYParser;
+use crate::vrsr::XMBParser;
 use crate::vrsr::{
     create_resource, create_teleplay, Episode, GeneralTeleplay, RequestorBuilder, Resource,
     Teleplay, URIType,
@@ -58,6 +59,12 @@ pub async fn search(keyword: &str, src: Src, all: bool, nocache: bool) -> Result
         )
         .await?;
         search_resource(
+            create_resource(requestor.clone(), XMBParser::new()),
+            "xmb",
+            keyword,
+        )
+        .await?;
+        search_resource(
             create_resource(requestor.clone(), JUGOUGOUParser::new()),
             "jugougou",
             keyword,
@@ -85,6 +92,14 @@ pub async fn search(keyword: &str, src: Src, all: bool, nocache: bool) -> Result
                 search_resource(
                     create_resource(requestor.clone(), JUGOUGOUParser::new()),
                     "jugougou",
+                    keyword,
+                )
+                .await?
+            }
+            Src::XMB => {
+                search_resource(
+                    create_resource(requestor.clone(), XMBParser::new()),
+                    "xmb",
                     keyword,
                 )
                 .await?
@@ -241,6 +256,16 @@ pub async fn download(
         Src::JUGOUGOU => {
             dwonload_teleplay(
                 create_teleplay(requestor, JUGOUGOUParser::new(), id),
+                index,
+                save_dir,
+                print,
+                climit,
+            )
+            .await?
+        }
+        Src::XMB => {
+            dwonload_teleplay(
+                create_teleplay(requestor, XMBParser::new(), id),
                 index,
                 save_dir,
                 print,

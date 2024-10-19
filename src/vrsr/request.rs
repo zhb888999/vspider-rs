@@ -164,7 +164,7 @@ impl Default for RequestorBuilder {
         );
         headers.insert(
             ACCEPT_ENCODING,
-            HeaderValue::from_static("gzip, deflate, br"),
+            HeaderValue::from_static("gzip, deflate"),
         );
         headers.insert(
             ACCEPT_LANGUAGE,

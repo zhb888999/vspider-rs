@@ -12,6 +12,7 @@ pub mod request;
 pub use self::parser::ijujitv::IJUJITVParser;
 pub use self::parser::jugougou::JUGOUGOUParser;
 pub use self::parser::zbkyyy::ZBKYYYParser;
+pub use self::parser::xmb::XMBParser;
 pub use self::request::RequestorBuilder;
 
 pub trait Request {

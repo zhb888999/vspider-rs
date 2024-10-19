@@ -32,6 +32,7 @@ impl GenerateInfo for IJUJITVParser {
         let mut host_url = url::Url::parse(&self.info.host).unwrap();
         host_url.set_path(&format!("detail/{}.html", id));
         TeleplayInfo {
+            id,
             home_page: host_url.to_string(),
             ..TeleplayInfo::default()
         }

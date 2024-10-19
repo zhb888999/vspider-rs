@@ -50,4 +50,5 @@ pub enum Src {
     ZBKYYY,
     IJUJITV,
     JUGOUGOU,
+    XMB,
 }

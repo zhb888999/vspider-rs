@@ -38,6 +38,7 @@ impl GenerateInfo for ZBKYYYParser {
         let mut host_url = url::Url::parse(&self.info.host).unwrap();
         host_url.set_path(&format!("qyvoddetail/{}.html", id));
         TeleplayInfo {
+            id,
             home_page: host_url.to_string(),
             ..TeleplayInfo::default()
         }
